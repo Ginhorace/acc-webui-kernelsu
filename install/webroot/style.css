@@ -1,0 +1,205 @@
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: #f5f5f5;
+    padding: 20px;
+    margin: 0;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.card {
+    background-color: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.status-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+}
+
+.status-key {
+    font-weight: bold;
+    color: #555;
+    min-width: 150px;
+}
+
+.status-value {
+    font-family: monospace;
+    text-align: right;
+    flex-grow: 1;
+}
+
+.good {
+    color: #2e7d32;
+}
+
+.warning {
+    color: #ff9800;
+}
+
+.bad {
+    color: #c62828;
+}
+
+button {
+    padding: 8px 15px;
+    background: #4285f4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 10px;
+    margin-top: 5px;
+}
+
+button:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+}
+
+.button-group {
+    margin-top: 15px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.log-container {
+    max-height: 300px;
+    overflow-y: auto;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 10px;
+    border-radius: 4px;
+    font-family: monospace;
+    white-space: pre-wrap;
+    margin-top: 10px;
+}
+
+.debug-info {
+    font-size: 12px;
+    color: #666;
+    margin-top: 5px;
+}
+
+.error-box {
+    background-color: #ffebee;
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 15px;
+    border-left: 4px solid #c62828;
+}
+
+/*Tried Debug Toggle WIP*/
+.toggle-btn {
+    margin: 10px 0;
+    padding: 8px 15px;
+    background: #4285f4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+}
+
+#log-panel, 
+.debug-panel {
+    display: none;
+    margin-top: 10px;
+}
+
+.log-container {
+    max-height: 300px;
+    overflow-y: auto;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 10px;
+    border-radius: 4px;
+    font-family: monospace;
+    white-space: pre-wrap;
+}
+
+/* Tab styles */
+.tab-buttons {
+    display: flex;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #ddd;
+}
+
+.tab-button {
+    padding: 8px 15px;
+    background: #f1f1f1;
+    border: none;
+    border-radius: 4px 4px 0 0;
+    margin-right: 5px;
+    cursor: pointer;
+}
+
+.tab-button.active {
+    background: #4285f4;
+    color: white;
+}
+
+.tab-content {
+    padding: 15px 0;
+}
+
+.tab-pane {
+    display: none;
+}
+
+.tab-pane.active {
+    display: block;
+}
+
+/* Configuration items */
+.config-item {
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+}
+
+.config-item label {
+    min-width: 200px;
+    font-weight: bold;
+    color: #555;
+}
+
+.config-item input, .config-item select {
+    flex-grow: 1;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.config-item input[type="number"] {
+    max-width: 100px;
+}
+
+/* Loading state */
+#settings-panel.loading {
+    opacity: 0.7;
+    pointer-events: none;
+    position: relative;
+}
+
+#settings-panel.loading::after {
+    content: "Loading configuration...";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 10px 20px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
