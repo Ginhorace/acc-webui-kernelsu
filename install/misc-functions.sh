@@ -87,8 +87,6 @@ cycle_switches() {
 
     [ ! -f ${chargingSwitch[0]:-//} ] || {
 
-      [ $1 = on ] || { set_temp_level 50; set_ch_curr 500; } > /dev/null
-
       flip_sw $1 || :
 
       if [ "$1" = on ]; then
@@ -361,10 +359,10 @@ resetbs() {
   set +e
   dumpsys batterystats --reset
   rm -rf /data/system/battery*stats*
-  dumpsys battery set ac 1
-  dumpsys battery set level 100
+  dsys_batt set ac 1
+  dsys_batt set level 100
   sleep 2
-  dumpsys battery reset
+  dsys_batt reset
   set -e
 } &>/dev/null
 
@@ -388,7 +386,7 @@ wait_plug() {
   }
   while ! online; do
     sleep ${loopDelay[1]}
-    ! $isAccd || sync_capacity 2>/dev/null || :
+    ! $isAccd || mask_capacity 2>/dev/null || :
     set +x
   done
   log_on
@@ -404,9 +402,9 @@ write() {
   local f=$dataDir/logs/write.log
   blacklisted=false
 
-  if [ -f "$2" ] && chown 0:0 $2 && chmod 0644 $2; then
+  if [ -f "$2" ] && chmod a+w $2; then
     case "$(grep -E "^(#$2|$2)$" $f 2>/dev/null || :)" in
-      \#*) blacklisted=true;;
+      \#*) [ -z "${lastNode-}" ] && { blacklisted=true; i=x; } || { eval "echo $1 > $2" || i=x; };;
       */*) eval "echo $1 > $2" || i=x;;
       *) echo $2 >> $f
          eval "echo $1 > $2" || i=x;;
@@ -414,16 +412,20 @@ write() {
   else
     i=x
   fi
-  f="$(cat $2)" 2>/dev/null || :
-  rm $TMPDIR/.nowrite 2>/dev/null || :
-  [[ "$one" != */* ]] || one="$(cat $one)"
-  ! [[ -n "$f" && "$f" != "$one" ]] || {
-    touch $TMPDIR/.nowrite
-    i=x
+
+  [ $i = x ] || {
+    f="$(cat $2)" 2>/dev/null || :
+    rm $TMPDIR/.nowrite 2>/dev/null || :
+    [[ "$one" != */* ]] || one="$(cat $one)"
+    ! [[ -n "$f" && "$f" != "$one" ]] || {
+      touch $TMPDIR/.nowrite
+      i=x
+    }
+    if [ -n "${exitCode_-}" ]; then
+      [ -n "${swValue-}" ] && swValue="$swValue, $f" || swValue="$f"
+    fi
   }
-  if [ -n "${exitCode_-}" ]; then
-    [ -n "${swValue-}" ] && swValue="$swValue, $f" || swValue="$f"
-  fi
+
   [ $i = x ] && return ${3-1} || {
     for i in $(seq $seq); do
       if eval "echo $1 > $2"; then
@@ -432,7 +434,6 @@ write() {
         return 1
       fi
     done
-    chmod 0444 $2
   }
 }
 

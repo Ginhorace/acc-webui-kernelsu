@@ -18,11 +18,11 @@ not_charging() {
   local i=
   local j=
   local sw=
-  local _STI=${_STI:-15} # switch test iterations
+  local _STI=${_STI:-35} # switch test iterations
   local switch=${flip-}; flip=
   local curThen=$(cat $curThen)
   local chargingSwitch="${chargingSwitch[*]-}"
-  local idleThreshold=${idleThreshold:-40}
+  local idleThreshold=${idleThreshold:-10}
   local battStatusOverride="${battStatusOverride-}"
   local battStatusWorkaround=${battStatusWorkaround-}
   local wsLog=$dataDir/logs/working-switches.log
@@ -60,7 +60,7 @@ not_charging() {
         status ${1-} || return 1
       fi
       [ ! -f $TMPDIR/.nowrite ] || { rm $TMPDIR/.nowrite 2>/dev/null || :; break; }
-      [ $i = $_STI ] || usleep 2500000
+      [ $i = $_STI ] || sleep 1
     done
     [ "$switch" = on ] || return 1
   else
@@ -95,21 +95,21 @@ read_status() {
 
 
 set_temp_level() {
-  local f=$TMPDIR/.tl-default
+  local f=$TMPDIR/.tl-custom
   local a=
   local b=battery/siop_level
   local l=${1:-${tempLevel-}}
   [ -n "$l" ] || return 0
-  [[ $l -eq 0 && -f $f ]]  && return 0 || :
+  [[ $l -eq 0 && ! -f $f ]] && return 0 || :
   if [ -f $b ]; then
-    chown 0:0 $b && chmod 0644 $b && echo $((100 - $l)) > $b && chmod 0444 $b || :
+    chmod a+w $b && echo $((100 - $l)) > $b || :
   else
     for a in */num_system_temp*levels; do
       b=$(echo $a | sed 's/\/num_/\//; s/s$//')
       if [ ! -f $a ] || [ ! -f $b ]; then
         continue
       fi
-      chown 0:0 $b && chmod 0644 $b && echo $(( ($(cat $a) * l) / 100 )) > $b && chmod 0444 $b || :
+      chmod a+w $b && echo $(( ($(cat $a) * l) / 100 )) > $b || :
     done
   fi
   for a in */charge_control_limit_max; do
@@ -117,9 +117,9 @@ set_temp_level() {
     if [ ! -f $a ] || [ ! -f $b ]; then
       continue
     fi
-    chown 0:0 $b && chmod 0644 $b && echo $(( ($(cat $a) * l) / 100 )) > $b && chmod 0444 $b || :
+    chmod a+w $b && echo $(( ($(cat $a) * l) / 100 )) > $b || :
   done
-  [ $l -eq 0 ] && touch $f || rm $f 2>/dev/null || :
+  [ $l -ne 0 ] && touch $f || rm $f 2>/dev/null || :
 }
 
 
@@ -195,11 +195,11 @@ if ${_INIT:-false}; then
   done
 
 
-  echo 0 > $TMPDIR/.dummy-curr
+  echo 0 > $TMPDIR/.dummy-mcc
 
   for currFile in rt*-charger/current_now battery/current_now $batt/current_now bms/current_now battery/?attery?verage?urrent \
     /sys/devices/platform/battery/power_supply/battery/?attery?verage?urrent \
-    ${battStatus%/*}/current_now $TMPDIR/.dummy-curr
+    ${battStatus%/*}/current_now $TMPDIR/.dummy-mcc
   do
     [ ! -f $currFile ] || break
   done
@@ -220,7 +220,7 @@ if ${_INIT:-false}; then
     ampFactor_=1000000
   fi
 
-  curThen=$TMPDIR/.curr
+  curThen=$TMPDIR/.mcc
   rm $curThen 2>/dev/null || :
 
 
@@ -230,8 +230,8 @@ battCapacity=$batt/capacity
 battStatus=$battStatus
 currFile=$currFile
 curThen=$curThen
-idleThreshold=${idleThreshold:-40}
-_STI=\${_STI:-15}
+idleThreshold=${idleThreshold:-10}
+_STI=\${_STI:-35}
 temp=$temp
 voltNow=$voltNow" > $TMPDIR/.batt-interface.sh
 
@@ -246,7 +246,8 @@ fi
 [ -f $curThen ] || echo null > $curThen
 
 batt_cap() {
-  local l=$(cmd_batt get level)
+  local l=$(dsys_batt get level)
   local l2=$(cat $battCapacity)
+  ${capacity[4]} && echo $l2 && return 0 || :
   [ -n "$l" ] && echo $l || echo $l2
 }

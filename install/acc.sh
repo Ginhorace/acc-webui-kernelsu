@@ -124,7 +124,7 @@ switch_fails() {
 }
 
 
-test_charging_switch() {
+test_charging_switch_() {
 
   local idleMode=false
   local failed=false
@@ -132,7 +132,6 @@ test_charging_switch() {
   chargingSwitch=($@)
 
   echo
-  { set_temp_level 50; set_ch_curr 500; } > /dev/null
 
   [ -n "${swCount-}" ] \
     && echo "$swCount/$swTotal: ${chargingSwitch[@]-}" \
@@ -165,6 +164,16 @@ test_charging_switch() {
   else
     switch_fails
   fi
+}
+
+
+test_charging_switch() {
+  local ret=
+  lastNode=
+  grep -Eq "^(#$1|$1)$" $writeLog 2>/dev/null || { echo "#$1" >> $writeLog; lastNode=$1; }
+  test_charging_switch_ "$@"; ret=$?
+  [ -n "${lastNode-}" ] && { sed -i "\|^#${lastNode}$|s|^#||" $writeLog; lastNode=; }
+  return $ret
 }
 
 
@@ -268,7 +277,7 @@ defaultConfig=$execDir/default-config.txt
 . $execDir/logf.sh
 . $execDir/misc-functions.sh
 
-if [ "${1:-y}" = -x ] ||  eq "${2-}" "p|parse"; then
+if eq "${1-}" "--test*|-t*|-x"; then
   log=/sdcard/Download/acc-${device}.log
   [ $1 != -x ] || shift
 else
@@ -368,8 +377,15 @@ case "${1-}" in
 
   -f|--force|--full)
 
-    [[ ".${2-}" = .-* ]] && _two= || _two="${2-}"
-    _two="${_two:-100}"
+    auto=false
+    cap=100
+    shift
+
+    for i in ${1-} ${2-}; do
+      [[ $i != [0-9]* ]] || { cap=$i; shift; }
+      [ $i != -a ] || { auto=true; shift; }
+    done
+
     cp -f $config $TMPDIR/.acc-f-config
     config=$TMPDIR/.acc-f-config
     sed -i '/^:/d' $config
@@ -385,25 +401,22 @@ case "${1-}" in
     max_charging_voltage=
     max_temp=
     off_mid=false
-    pause_capacity=$_two
-    resume_capacity=$((_two - 2))
+    pause_capacity=$cap
+    resume_capacity=$((cap - 2))
     resume_temp=
     temp_level=
     . $execDir/write-config.sh)
 
-    # additional options
-    _extra=false
-    case "${2-}" in
-      [0-9]*) [[ ".${3-}" != .-* ]] || { shift 2; _extra=true; };;
-      -*) shift 1; _extra=true;;
-    esac
-    ! $_extra || eval $TMPDIR/acca $config "$@"
+    ! $auto || print '\n:; online || exec $TMPDIR/accd' >> $config
+    [ -z "${1-}" ] || eval $TMPDIR/acca $config "$@"
 
-    #print '\n:; online || exec $TMPDIR/accd' >> $config
-    print_charging_enabled_until ${_two}%
-    print_restart_accd
-    notif "$(print_charging_enabled_until ${_two}%; print_restart_accd)"
-    echo
+    print_charging_enabled_until ${cap}%
+    $auto || print_restart_accd
+    ! ${verbose:-true} || {
+      notif "$(print_charging_enabled_until ${cap}%; $auto || print_restart_accd)"
+      echo
+    }
+    unset auto cap i
     exec $TMPDIR/accd $config
   ;;
 
@@ -517,15 +530,21 @@ case "${1-}" in
   ;;
 
 
-  -t|--test)
+  -t*|--test*)
 
     parsed=
     exitCode_=10
     exitCode=$exitCode_
+    writeLog=$dataDir/logs/write.log
     logF_=$dataDir/logs/acc-t_output-${device}.log
-    logF=/sdcard/Download/acc-t_output-${device}_$(date +%Y-%m-%d_%H-%M-%S).log
+    : ${logF:=/sdcard/Download/acc-t_output-${device}_$(date +%Y-%m-%d_%H-%M-%S).log}
+
+    __STI=${1#-t}
+    __STI=${__STI#--test}
+    [ -z "$__STI" ] || _STI=$__STI
 
     shift
+    [ "${1:-x}" != q ] || shift
     print_wait
     print_unplugged
 
@@ -543,13 +562,14 @@ case "${1-}" in
     config=$TMPDIR/.config
 
     exxit() {
-      rm $TMPDIR/.testingsw
+      rm $TMPDIR/.testingsw 2>/dev/null || :
       if [ -n "$parsed" ]; then
         cat $TMPDIR/ch-switches $_parsed 2>/dev/null > $parsed \
           && sort -u $parsed | sed 's/ $//; /^$/d' > $TMPDIR/ch-switches
       fi
       cp -f $logF $logF_ 2>/dev/null
       ! $daemonWasUp || start-stop-daemon -bx $TMPDIR/.accdt -S --
+      [ -n "${lastNode-}" ] && sed -i "\|^#${lastNode}$|s|^#||" $writeLog
       exit $exitCode
     }
 
@@ -578,7 +598,9 @@ case "${1-}" in
 
     if [ -z "${2-}" ]; then
       !  eq "${1-}" "p|parse" || parsed=$TMPDIR/.parsed
-      [ -z "$parsed" ] || {
+      if [ -z "$parsed" ]; then
+        rm $dataDir/logs/working-switches.log 2>/dev/null || :
+      else
         _parsed=$dataDir/logs/parsed.log
         if parse_switches > $parsed; then
           set -- $parsed
@@ -595,7 +617,7 @@ case "${1-}" in
           echo
           exit
         fi
-      }
+      fi
       swCount=1
       swTotal=$(wc -l ${1-$TMPDIR/ch-switches} | cut -d ' ' -f 1)
       sort -u $TMPDIR/ch-switches > $TMPDIR/ch-switches_
@@ -603,8 +625,7 @@ case "${1-}" in
       while read _chargingSwitch; do
         echo "x$_chargingSwitch" | grep -Eq '^x$|^x#' && continue
         [ -f "$(echo "$_chargingSwitch" | cut -d ' ' -f 1)" ] && {
-          { test_charging_switch $_chargingSwitch; echo $? > $TMPDIR/.exitCode; } \
-            | tee -a $logF
+          { test_charging_switch $_chargingSwitch; echo $? > $TMPDIR/.exitCode; } | tee -a $logF
           rm $TMPDIR/.sw 2>/dev/null || :
           swCount=$((swCount + 1))
           exitCode_=$(cat $TMPDIR/.exitCode)
@@ -621,8 +642,7 @@ case "${1-}" in
       done < ${1-$TMPDIR/ch-switches}
       echo
     else
-      { test_charging_switch "$@"; echo $? > $TMPDIR/.exitCode; } \
-        | tee -a $logF
+      { test_charging_switch "$@"; echo $? > $TMPDIR/.exitCode; } | tee -a $logF
       rm $TMPDIR/.sw 2>/dev/null || :
       exitCode=$(cat $TMPDIR/.exitCode)
       echo
@@ -635,7 +655,9 @@ case "${1-}" in
 
 
   -T|--logtail)
-    tail -F $TMPDIR/accd-*.log
+    arg="${2-}"
+    arg="${arg//,/|}"
+    tail -F $TMPDIR/accd-*.log | grep -E "${arg:-.}"
   ;;
 
   -u|--upgrade)

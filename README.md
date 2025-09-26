@@ -111,6 +111,7 @@ In case of bootloop, one can easily generate persistent logs and/or stop/disable
 ACC daemon initializes 60 seconds after the boot animation stops.
 This gives plenty of time to run `pkill -9 -f accd` to kill the waiting process or `accd -x` to generate persistent logs (`/sdcard/accd-*.log`) for debugging the bootloop.
 `accd -x` also sets the disable flag (`/data/adb/vr25/acc-data/disable`). This file prevents the daemon from starting again. It's removed manually or by the installer.
+`acc -t` always implies `-x` and tries to auto-blacklist switches that trigger unwanted reboots.
 
 
 ---
@@ -244,12 +245,12 @@ In interactive mode, it also asks the user whether they want to download and ins
 ```
 #DC#
 
-configVerCode=202501110
+configVerCode=202505180
 
 allowIdleAbovePcap=true
 ampFactor=
 battStatusWorkaround=true
-capacity=(5 50 70 75 false)
+capacity=(5 101 70 75 false)
 cooldownCurrent=
 cooldownRatio=()
 currentWorkaround=false
@@ -259,7 +260,7 @@ offMid=true
 prioritizeBattIdleMode=true
 rebootResume=false
 resetBattStats=(false false false)
-temperature=(35 50 45 55)
+temperature=(45 50 40 55)
 tempLevel=0
 voltFactor=
 
@@ -347,12 +348,12 @@ runCmdOnPause=''
 
 # $_DPOL  discharge polarity (+|-)
 # $_status   Charging|Discharging|Idle
-# $_STI   switch test iterations (default: 15)
+# $_STI   switch test iterations (default: 35)
 # $batt   expands to the /sys/class/power_supply/battery (or equivalent) directory
 # $battCapacity   $batt/capacity file
 # $battStatus   $batt/status file
 # $currFile   current_now file
-# $idleThreshold   mA absolute value to consider charging status=Idle (default: 40)
+# $idleThreshold   mA absolute value to consider charging status=Idle (default: 10)
 # $temp   temperature reporting file
 # ${isAccd:-false}   true|false (whether accd in running)
 
@@ -524,7 +525,7 @@ runCmdOnPause=''
 # cooldown_capacity (cc) #
 #
 # Type: Integer (percentage)
-# Default: 50
+# Default: 101
 #
 # Battery level or millivolts at which the cooldown cycle starts.
 # Cooldown reduces battery stress induced by prolonged exposure to high temperature and high charging voltage.
@@ -558,7 +559,7 @@ runCmdOnPause=''
 # cooldown_temp (ct) #
 #
 # Type: Integer (°C)
-# Default: 35
+# Default: 45
 #
 # Temperature (°C) at which the cooldown cycle starts.
 # Cooldown reduces the battery degradation rate by lowering the device's temperature.
@@ -591,7 +592,7 @@ runCmdOnPause=''
 #
 # This is a list of comma or space-separated patterns matching Android package names.
 # When a matched app is running in the foreground, acc daemon enables idle mode.
-# e.g., acc -s ia=maps,pubg,codm,pokemon
+# e.g., acc -s ia=maps,codm,pokemon
 
 
 # lang (l) #
@@ -621,7 +622,7 @@ runCmdOnPause=''
 # max_temp (mt) # resume_temp (rt) #
 #
 # Type: Integer (°C)
-# Defaults: mt=50, rt=45
+# Defaults: mt=50, rt=40
 #
 # Those two work together and are NOT tied to the cooldown cycle.
 # At max_temp, charging is paused.
@@ -733,6 +734,7 @@ runCmdOnPause=''
 # At the highest level, charging current is blocked.
 # The stock values are generally integers, ranging from 0 to 6, 7 or so. siop_level (Samsung) ranges from 0 to 100).
 # For greater flexibility, this variable stores a percentage value, which is internally mapped to the system's scales.
+# Tip: If mcc is ignored under high temperature, but you still want it forced, try setting tl=1.
 
 #/DC#
 ```
@@ -761,7 +763,7 @@ Usage
 
   acc   Wizard
 
-  accd   Start/restart accd
+  accd [--init|-i]   Start/restart accd; -i triggers a clean restart (recreates runtime cache)
 
   accd.   Stop acc/daemon
 
@@ -830,11 +832,12 @@ Options
       acc -e 30m (recharge for 30 minutes)
       acc -e 4000mv (recharge to 4000mV)
 
-  -f|--force|--full [capacity] [additional opts/args]   Charge once to a given capacity (default: 100%), without restrictions
+  -f|--force|--full [capacity] [-a] [additional opts/args]   Charge once to a given capacity (default: 100%), without restrictions
     e.g.,
       acc -f 95 (charge to 95%)
       acc -f (charge to 100%)
       acc -f -s mcc=500 (charge to 100% with a 500 mA limit)
+      acc -f 90 -a (the -a (auto) tries to restart accd automatically shortly after the charger is unplugged; not supported by all devices)
 
   -F|--flash ["zip_file"]   Flash any zip files whose update-binary is a shell script
     e.g.,
@@ -949,22 +952,30 @@ Options
 
   -sv [millivolts|-] [--exit]   Same as above
 
-  -t|--test [ctrl_file1 on off [ctrl_file2 on off]]   Test custom charging switches
+  -t[#]|--test[#] [q] [ctrl_file1 on off [ctrl_file2 on off]]   Test custom charging switches
+    Implies -x, as in acc -x -t ...
+    [q]: acca -t q ... (quiet test; reports Ok, Idle or Fail)
     e.g.,
+      acc -t5 battery/charging_enabled 1 0 (test with _STI=5)
       acc -t battery/charging_enabled 1 0
       acc -t /proc/mtk_battery_cmd/current_cmd 0::0 0::1 /proc/mtk_battery_cmd/en_power_path 1 0 ("::" is a placeholder for " " - MTK only)
 
-  -t|--test [file]   Test charging switches from a file (default: /ch-switches)
+  -t[#]|--test[#] [q] [file]   Test charging switches from a file (default: /ch-switches)
+    Implies -x, as in acc -x -t ...
+    [q]: acca -t q ... (quiet test; reports Ok, Idle or Fail)
     e.g.,
       acc -t (test known switches)
       acc -t /sdcard/experimental_switches.txt (test custom/foreign switches)
 
-  -t|--test [p|parse]   Parse potential charging switches from the power supply log (as "acc -p"), test them all, and add the working ones to the list of known switches
-    Implies -x, as acc -x -t p
+  -t[#]|--test[#] [q] [p|parse]   Parse potential charging switches from the power supply log (as "acc -p"), test them all, and add the working ones to the list of known switches
+    Implies -x, as in acc -x -t p
+    [q]: acca -t q ... (quiet test; reports Ok, Idle or Fail)
     e.g., acc -t p
 
-  -T|--logtail   Monitor accd log (tail -F)
-    e.g., acc -T
+  -T|--logtail ['egrep regex, with "," in place of "|"']   Monitor accd log (tail -F)
+    e.g.,
+      acc -T
+      acc -T 'cap,enable'
 
   -u|--upgrade [-c|--changelog] [-f|--force] [-n|--non-interactive]   Online upgrade/downgrade
     e.g.,
@@ -1387,7 +1398,7 @@ Some devices allow that to be modified. If that's the case for you, use `apply_o
 
 If your battery's thermistor always reports a negative value, and charging is very slow or even off, see if the following helps (paste and run):
 
-`acc -c d temp_cool; acc -c a ':; for i in */temp_cool */temp_cold; do [ -f $i ] || continue; chown 0:0 $i && chmod 0644 $i && echo "-999" > $i && chown 0444 $i || :; done'`
+`acc -c d temp_cool; acc -c a ':; for i in */temp_cool */temp_cold; do [ -f $i ] || continue; chmod a+w $i && echo "-999" > $i || :; done'`
 
 
 ---
@@ -1501,7 +1512,7 @@ IMPORTANT: lithium batteries have the longest lifespan when kept about 40-60% ch
 Not all devices support the "native" idle mode. Hence, variants of "emulated" idle mode are available:
 
 1. Limit the charging voltage (requires kernel support) to a value that gets you close to the desired battery level. To avoid false positives, determine the value only after the device has been unplugged for a minute or so.
-2. Pause/resume charging based on voltage thresholds (e.g., acc 3900 keeps voltage within 3850 and 3900 millivolts).
+2. Pause/resume charging based on voltage thresholds (e.g., acc 3950 keeps voltage within 3800 and 3950 millivolts).
 3. Set resume_capacity to (pause_capacity - 1), e.g., acc 50 49.
 
 Notes
@@ -1520,15 +1531,10 @@ Configure day and night profiles:
 ---
 ## LINKS
 
-- [Donate - Zelle: iprj25 @ gmail . com](https://enroll.zellepay.com/qr-codes?data=eyJuYW1lIjoiSVZBTkRSTyIsInRva2VuIjoiaXByajI1QGdtYWlsLmNvbSIsImFjdGlvbiI6InBheW1lbnQifQ==)
-- [Donate - Airtm, username: ivandro863auzqg](https://app.airtm.com/send-or-request/send)
 - [Donate - Credit/Debit Card](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=iprj25@gmail.com&lc=US&item_name=VR25+is+creating+free+and+open+source+software.+Donate+to+suppport+their+work.&no_note=0&cn=&currency_code=USD&bn=PP-DonationsBF:btn_donateCC_LG.gif:NonHosted)
 - [Donate - Liberapay](https://liberapay.com/vr25)
 - [Donate - Patreon](https://patreon.com/vr25)
 - [Donate - PayPal Me](https://paypal.me/vr25xda)
-
-- [Frontend - ACC App](https://github.com/MatteCarra/AccA/releases)
-- [Frontend - ACC Settings](https://github.com/CrazyBoyFeng/AccSettings)
 
 - [Must Read - How to Prolong Lithium Ion Batteries Lifespan](https://batteryuniversity.com/article/bu-808-how-to-prolong-lithium-based-batteries)
 

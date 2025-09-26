@@ -88,7 +88,7 @@ Usage
 
   acc   Wizard
 
-  accd   Start/restart accd
+  accd [--init|-i]   Start/restart accd; -i triggers a clean restart (recreates runtime cache)
 
   accd.   Stop acc/daemon
 
@@ -157,11 +157,12 @@ Options
       acc -e 30m (recharge for 30 minutes)
       acc -e 4000mv (recharge to 4000mV)
 
-  -f|--force|--full [capacity] [additional opts/args]   Charge once to a given capacity (default: 100%), without restrictions
+  -f|--force|--full [capacity] [-a] [additional opts/args]   Charge once to a given capacity (default: 100%), without restrictions
     e.g.,
       acc -f 95 (charge to 95%)
       acc -f (charge to 100%)
       acc -f -s mcc=500 (charge to 100% with a 500 mA limit)
+      acc -f 90 -a (the -a (auto) tries to restart accd automatically shortly after the charger is unplugged; not supported by all devices)
 
   -F|--flash ["zip_file"]   Flash any zip files whose update-binary is a shell script
     e.g.,
@@ -276,22 +277,30 @@ Options
 
   -sv [millivolts|-] [--exit]   Same as above
 
-  -t|--test [ctrl_file1 on off [ctrl_file2 on off]]   Test custom charging switches
+  -t[#]|--test[#] [q] [ctrl_file1 on off [ctrl_file2 on off]]   Test custom charging switches
+    Implies -x, as in acc -x -t ...
+    [q]: acca -t q ... (quiet test; reports Ok, Idle or Fail)
     e.g.,
+      acc -t5 battery/charging_enabled 1 0 (test with _STI=5)
       acc -t battery/charging_enabled 1 0
       acc -t /proc/mtk_battery_cmd/current_cmd 0::0 0::1 /proc/mtk_battery_cmd/en_power_path 1 0 ("::" is a placeholder for " " - MTK only)
 
-  -t|--test [file]   Test charging switches from a file (default: $TMPDIR/ch-switches)
+  -t[#]|--test[#] [q] [file]   Test charging switches from a file (default: $TMPDIR/ch-switches)
+    Implies -x, as in acc -x -t ...
+    [q]: acca -t q ... (quiet test; reports Ok, Idle or Fail)
     e.g.,
       acc -t (test known switches)
       acc -t /sdcard/experimental_switches.txt (test custom/foreign switches)
 
-  -t|--test [p|parse]   Parse potential charging switches from the power supply log (as "acc -p"), test them all, and add the working ones to the list of known switches
-    Implies -x, as acc -x -t p
+  -t[#]|--test[#] [q] [p|parse]   Parse potential charging switches from the power supply log (as "acc -p"), test them all, and add the working ones to the list of known switches
+    Implies -x, as in acc -x -t p
+    [q]: acca -t q ... (quiet test; reports Ok, Idle or Fail)
     e.g., acc -t p
 
-  -T|--logtail   Monitor accd log (tail -F)
-    e.g., acc -T
+  -T|--logtail ['egrep regex, with "," in place of "|"']   Monitor accd log (tail -F)
+    e.g.,
+      acc -T
+      acc -T 'cap,enable'
 
   -u|--upgrade [-c|--changelog] [-f|--force] [-n|--non-interactive]   Online upgrade/downgrade
     e.g.,

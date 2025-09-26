@@ -105,7 +105,7 @@ if ! $_INIT; then
     [ -n "$1" ] && exitCode=$1
     [ -n "$2" ] && print "$2"
     $persistLog || exec > /dev/null 2>&1
-    cmd_batt reset >/dev/null
+    dsys_batt reset >/dev/null
     grep -Ev '^$|^#' $config > $TMPDIR/.config
     config=$TMPDIR/.config
     applyOnPlug=(${applyOnPlug[*]-} ${applyOnBoot[*]-})
@@ -178,11 +178,7 @@ if ! $_INIT; then
 
     if $isCharging; then
 
-      # set chgStatusCode
-      [ -z "$chgStatusCode" ] && cmd_batt reset >/dev/null \
-        && chgStatusCode=$(cmd_batt get status) || :
-
-      if [ -f $TMPDIR/.ch-curr-read ]; then
+      if [ -f $TMPDIR/.mcc-read ]; then
         # set charging current control files, as needed
         if [ -n "${maxChargingCurrent[0]-}" ] \
           && { [ -z "${maxChargingCurrent[1]-}" ] || [[ "${maxChargingCurrent[1]-}" = -* ]]; } \
@@ -240,10 +236,6 @@ if ! $_INIT; then
           }
         } || :
 
-      # set dischgStatusCode and capacitySync
-      [ -z "$dischgStatusCode" ] && cmd_batt reset >/dev/null \
-        && dischgStatusCode=$(cmd_batt get status)
-
       $cooldown || {
         resetBattStatsOnPlug=true
         if $resetBattStatsOnUnplug && ${resetBattStats[1]}; then
@@ -256,14 +248,14 @@ if ! $_INIT; then
       }
     fi
 
-    sync_capacity
+    mask_capacity
 
     set +u
-    if [ -n "${idleApps[0]}" ]; then
-      dumpsys activity top | sed -En 's/(.*ACTIVITY )(.*)(\/.*)/\2/p' \
+    [ -n "${idleApps[0]}" ] \
+      && dumpsys activity top | sed -En 's/(.*ACTIVITY )(.*)(\/.*)/\2/p' \
       | tail -n 1 | grep -E "$(echo ${idleApps[*]} | sed 's/ /|/g; s/,/|/g')" >/dev/null \
-      && capacity[3]=$(batt_cap) && capacity[2]=$((capacity[3] - 5)) || :
-    fi
+      && pause_now || :
+    [ $(cat /dev/encore_mode 2>/dev/null || cat /data/adb/.config/encore/current_profile 2>/dev/null || print 0) -ne 1 ] || pause_now
     set -u
 
     # log buffer reset
@@ -329,11 +321,10 @@ if ! $_INIT; then
           _lt_pause_cap && [ $(cat $temp) -lt $(( ${temperature[1]} * 10 )) ] && is_charging || break
 
           if [ -z "${cooldownCurrent-}" ]; then
-            cmd_batt set status $chgStatusCode
+            dsys_batt set ac 1
             disable_charging
             sleep ${cooldownRatio[1]:-${loopDelay[0]}}
             enable_charging
-            $capacitySync || cmd_batt reset >/dev/null
             sleep ${cooldownRatio[0]:-${loopDelay[0]}}
           else
             (set_ch_curr ${cooldownCurrent:--} || :)
@@ -413,11 +404,17 @@ if ! $_INIT; then
   }
 
 
+  pause_now() {
+    capacity[3]=$(batt_cap)
+    capacity[2]=$((capacity[3] - 5))
+  }
+
+
   set_dp() {
     local cmd=
     local curr=
     . $config
-    while [ -z "${_DPOL-}" ] && $battStatusWorkaround && [ $currFile != $TMPDIR/.dummy-curr ]; do
+    while [ -z "${_DPOL-}" ] && $battStatusWorkaround && [ $currFile != $TMPDIR/.dummy-mcc ]; do
       curr=$(cat $currFile)
       if [ $(cat $battStatus) = Charging ]; then
         if [ $curr -gt 0 ]; then
@@ -452,54 +449,35 @@ if ! $_INIT; then
   }
 
 
-  sync_capacity() {
+  mask_capacity() {
+
     is_android || return 0
-    if ${capacity[4]}; then
-      capacitySync=true
-      isCharging=${isCharging:-false}
-      local isCharging_=$isCharging
-      local battCap=$(batt_cap)
 
-      ! ${capacity[4]} || {
-        if [ ${capacity[3]} -gt 3000 ]; then
-          local maskedCap=$battCap
-        else
-          local maskedCap=
-          if [ ${capacity[0]} -le 0 ]; then
-            maskedCap=$(calc $battCap \* 100 / ${capacity[3]} | xargs printf %.f)
-          else
-            maskedCap=$(calc "($battCap - ${capacity[0]}) * 100 / (${capacity[3]} - ${capacity[0]})" | xargs printf %.f)
-          fi
-          [ $maskedCap -le 100 ] || maskedCap=100
-        fi
-      }
+    isCharging=${isCharging:-false}
+    local isCharging_=$isCharging
+    local battCap=$(batt_cap)
+    local maskedCap=
 
-      ! $cooldown || isCharging=true
+    if ${capacity[4]} && [ ${capacity[3]} -le 100 ]; then
 
-      if $isCharging; then
-        cmd_batt set ac 1
-        cmd_batt set status $chgStatusCode
+      if [ ${capacity[0]} -le 0 ]; then
+        maskedCap=$(calc $battCap \* 100 / ${capacity[3]} | xargs printf %.f)
       else
-        cmd_batt unplug
-        cmd_batt set status $dischgStatusCode
+        maskedCap=$(calc "($battCap - ${capacity[0]}) * 100 / (${capacity[3]} - ${capacity[0]})" | xargs printf %.f)
       fi
 
-      isCharging=$isCharging_
+      [ $maskedCap -le 100 ] || maskedCap=100
+      [ $maskedCap -ge 2 ] || maskedCap=2
 
-      [ $battCap -lt 2 ] || {
-        if ${capacity[4]}; then
-          cmd_batt set level $maskedCap
-          cmd_batt set temp $(cat $temp)
-        else
-          cmd_batt set level $battCap
-          cmd_batt set temp $(cat $temp)
-        fi
-      }
+      ! $cooldown || isCharging=true
+      $isCharging && dsys_batt set ac 1 || dsys_batt unplug
+
+      isCharging=$isCharging_
+      dsys_batt set level $maskedCap
+      dsys_batt set temp $(cat $temp)
+
     else
-      ! $capacitySync || {
-        cmd_batt reset >/dev/null
-        capacitySync=false
-      }
+      dsys_batt reset >/dev/null
     fi
   }
 
@@ -510,7 +488,6 @@ if ! $_INIT; then
 
   xIdle=false
   xIdleCount=0
-  capacitySync=false
   chDisabledByAcc=false
   chgStatusCode=""
   cooldown=false
@@ -687,7 +664,7 @@ else
 
 
   # read charging voltage control files
-  rm $TMPDIR/.ch-curr-read 2>/dev/null
+  rm $TMPDIR/.mcc-read 2>/dev/null
   : > $TMPDIR/ch-volt-ctrl-files_
   ls -1 $(ls_volt_ctrl_files | grep -Ev '^#|^$') 2>/dev/null | \
     while read file; do
