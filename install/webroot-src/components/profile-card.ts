@@ -6,7 +6,7 @@ import { LogLevel } from '@/data/state';
 
 export interface ProfileCardOptions {
     configPath: string;
-    isDefault: boolean;
+    isStartup: boolean;
     onApply?: (card: ProfileCard) => void | Promise<void>;
     onCopy?: (card: ProfileCard) => void | Promise<void>;
     onDelete?: (card: ProfileCard) => void | Promise<void>;
@@ -15,16 +15,18 @@ export interface ProfileCardOptions {
 
 export class ProfileCard {
     private configPath: string;
-    private isDefault: boolean;
+    private isStartup: boolean;
     private container: HTMLElement;
     private callbacks: ProfileCardOptions;
     private isActive: boolean = false;
+    private isExpanded: boolean = false;
 
     private elements: {
         name: HTMLElement;
         chargeLimit: HTMLElement;
         resumeCharge: HTMLElement;
         pauseAt: HTMLElement;
+        buttonGroup: HTMLElement | null;
         btnApply: HTMLButtonElement | null;
         btnCopy: HTMLButtonElement | null;
         btnDelete: HTMLButtonElement | null;
@@ -32,7 +34,7 @@ export class ProfileCard {
 
     constructor(options: ProfileCardOptions) {
         this.configPath = options.configPath;
-        this.isDefault = options.isDefault;
+        this.isStartup = options.isStartup;
         this.callbacks = options;
 
         this.container = document.createElement('div');
@@ -44,6 +46,7 @@ export class ProfileCard {
             chargeLimit: null as any,
             resumeCharge: null as any,
             pauseAt: null as any,
+            buttonGroup: null,
             btnApply: null,
             btnCopy: null,
             btnDelete: null
@@ -64,8 +67,8 @@ export class ProfileCard {
      * Get profile name from path
      */
     private getProfileName(): string {
-        if (this.isDefault) {
-            return 'Default Profile';
+        if (this.isStartup) {
+            return 'Startup Profile';
         }
         const parts = this.configPath.split('/');
         const fileName = parts[parts.length - 1];
@@ -78,7 +81,7 @@ export class ProfileCard {
     private render(): void {
         const buttonsHtml = `<button class="primary-button" data-action="apply">Apply</button>
                <button class="success-button" data-action="copy">Copy</button>
-               <button class="danger-button" data-action="delete"${this.isDefault ? ' disabled' : ''}>Delete</button>`;
+               <button class="danger-button" data-action="delete"${this.isStartup ? ' disabled' : ''}>Delete</button>`;
 
         this.container.innerHTML = `
             <h2 class="profile-name">${this.getProfileName()}</h2>
@@ -96,7 +99,7 @@ export class ProfileCard {
                     <span class="status-value pause-at">-</span>
                 </div>
             </div>
-            <div class="button-group">${buttonsHtml}</div>
+            <div class="button-group collapsed">${buttonsHtml}</div>
         `;
 
         // Cache DOM references
@@ -104,6 +107,7 @@ export class ProfileCard {
         this.elements.chargeLimit = this.container.querySelector('.charge-limit')!;
         this.elements.resumeCharge = this.container.querySelector('.resume-charge')!;
         this.elements.pauseAt = this.container.querySelector('.pause-at')!;
+        this.elements.buttonGroup = this.container.querySelector('.button-group');
         this.elements.btnApply = this.container.querySelector('[data-action="apply"]');
         this.elements.btnCopy = this.container.querySelector('[data-action="copy"]');
         this.elements.btnDelete = this.container.querySelector('[data-action="delete"]');
@@ -113,11 +117,11 @@ export class ProfileCard {
      * Bind event listeners
      */
     private bindEvents(): void {
-        // Card selection
+        // Card selection - toggle button-group
         this.container.addEventListener('click', (e) => {
             const target = e.target as HTMLElement;
             if (!target.matches('button')) {
-                this.callbacks.onSelect?.(this);
+                this.toggle();
             }
         });
 
@@ -125,6 +129,44 @@ export class ProfileCard {
         this.elements.btnApply?.addEventListener('click', () => this.handleApply());
         this.elements.btnCopy?.addEventListener('click', () => this.handleCopy());
         this.elements.btnDelete?.addEventListener('click', () => this.handleDelete());
+    }
+
+    /**
+     * Toggle button-group visibility
+     */
+    toggle(): void {
+        this.isExpanded = !this.isExpanded;
+        if (this.elements.buttonGroup) {
+            this.elements.buttonGroup.classList.toggle('collapsed', !this.isExpanded);
+        }
+        this.callbacks.onSelect?.(this);
+    }
+
+    /**
+     * Expand button-group
+     */
+    expand(): void {
+        this.isExpanded = true;
+        if (this.elements.buttonGroup) {
+            this.elements.buttonGroup.classList.remove('collapsed');
+        }
+    }
+
+    /**
+     * Collapse button-group
+     */
+    collapse(): void {
+        this.isExpanded = false;
+        if (this.elements.buttonGroup) {
+            this.elements.buttonGroup.classList.add('collapsed');
+        }
+    }
+
+    /**
+     * Check if expanded
+     */
+    getIsExpanded(): boolean {
+        return this.isExpanded;
     }
 
     /**
@@ -137,7 +179,8 @@ export class ProfileCard {
         try {
             await this.callbacks.onApply?.(this);
         } finally {
-            if (this.elements.btnApply) {
+            // Only re-enable if not active (current profile)
+            if (this.elements.btnApply && !this.isActive) {
                 this.elements.btnApply.disabled = false;
             }
         }
@@ -184,7 +227,7 @@ export class ProfileCard {
             if (result.errno === 0 && result.stdout) {
                 const configMap = parseConfig(result.stdout);
                 this.updateDisplay(configMap);
-                logger.printToConsole(`Profile loaded: ${this.getProfileName()}`);
+                logger.printToConsole(`Profile loaded: ${this.getProfileName()}`,LogLevel.DEBUG);
             } else {
                 logger.printToConsole(`Failed to load profile: ${this.getProfileName()}`, LogLevel.ERROR);
             }
@@ -213,8 +256,22 @@ export class ProfileCard {
         this.isActive = active;
         if (active) {
             this.container.classList.add('active-profile');
+            // Disable apply and delete buttons when active
+            if (this.elements.btnApply) {
+                this.elements.btnApply.disabled = true;
+            }
+            if (this.elements.btnDelete) {
+                this.elements.btnDelete.disabled = true;
+            }
         } else {
             this.container.classList.remove('active-profile');
+            // Re-enable buttons when inactive (delete remains disabled if default profile)
+            if (this.elements.btnApply) {
+                this.elements.btnApply.disabled = false;
+            }
+            if (this.elements.btnDelete) {
+                this.elements.btnDelete.disabled = this.isStartup;
+            }
         }
     }
 

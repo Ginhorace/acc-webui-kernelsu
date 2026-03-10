@@ -1,6 +1,7 @@
 import { ExecResults } from '@/env/ksu';
 import * as logger from '@/env/logger';
 import { getAccPath } from '@/commands/acc';
+import { getAccProfilePath } from '@/data/state';
 
 /**
  * 执行acca相关指令 支持
@@ -31,37 +32,27 @@ function getAccaPAth(){
  *    Note: all properties have short aliases for faster typing; run "acc -c cat" to see them
  * @param input 
  */
-async function setConfig(input: string, profilePath?: string): Promise<ExecResults> {
-    return execAcca([profilePath ? profilePath : '', '-s', input.trim()]);
+async function setConfig(input: string): Promise<ExecResults> {
+    return execAcca([getAccProfilePath(),'-s', input.trim()]);
 }
 /**
  * -s|--set   Print  config
  */
-async function printDefaultConfig(profilePath:string): Promise<ExecResults> {
-    return execAcca([profilePath,'-s','d']);
+async function printDefaultConfig(): Promise<ExecResults> {
+    return execAcca(['-s','d']);
 }
 /**
  * -s|--set   Print default config
  */
-async function printConfig(profilePath?:string): Promise<ExecResults> {
-    return execAcca([profilePath?profilePath:'','-s','p']);
-}
-/**
- *   -s|--set r|--reset [a]   Restore default config ("a" is for "all": config and control file blacklists, essentially a hard reset)
- *    e.g.,
- *      acc -s r
- *
- *  -sr [a]   Same as above
- */
-async function resetConfig(): Promise<ExecResults> {
-    return execAcca(['-sr']);
+async function printConfig(profilePath:string): Promise<ExecResults> {
+    return execAcca([profilePath,'-s','p']);
 }
 
 /**
  * -i|--info [case insensitive egrep regex (default: ".")]   Show battery info
  */
 async function showInfo(): Promise<ExecResults> {
-    return execAcca(['-i']);
+    return execAcca([getAccProfilePath(),'-i']);
 }
 
 /**
@@ -69,12 +60,10 @@ async function showInfo(): Promise<ExecResults> {
  *  e.g.,
  *    acc -D start (alias: accd)
  *    acc -D restart (alias: accd)
- *    accd -D stop (alias: "accd.")
  * @param options 选项（包含回调）
  * @returns AbortController 用于取消进程
  */
 function restartAccdSpawn(
-    profilePath?:string,
     options: {
         onStdout?: (data: string) => void;
         onStderr?: (data: string) => void;
@@ -82,9 +71,12 @@ function restartAccdSpawn(
         onError?: (err: any) => void;
     } = {}
 ): AbortController {
-    return logger.spawn(getAccaPAth(), [profilePath?profilePath:'','-D', 'restart'], options);
+    return logger.spawn(getAccaPAth(), [getAccProfilePath(),'-D', 'restart'], options);
 }
 /**
+ *    -D|--daemon [start|stop|restart]   Manage daemon
+ *  e.g.,
+ *    accd -D stop (alias: "accd.")
  * @param options 选项（包含回调）
  * @returns AbortController 用于取消进程
  */
@@ -100,4 +92,4 @@ function stopAccdSpawn(
 }
 
 
-export { setConfig,printDefaultConfig,printConfig,resetConfig,showInfo,restartAccdSpawn,stopAccdSpawn }
+export { setConfig,printDefaultConfig,printConfig,showInfo,restartAccdSpawn,stopAccdSpawn }

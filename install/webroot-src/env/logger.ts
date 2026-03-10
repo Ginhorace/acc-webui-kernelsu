@@ -1,5 +1,5 @@
 import { buildCommand, exec as ksuExec, ExecResults, spawn as keuSpawn, SpawnOptions } from '@/env/ksu';
-import { logDir, logFile } from '@/config/setting';
+import {  logFile } from '@/config/setting';
 import { getLogLevel, setLogLevel, LogLevel } from '@/data/state';
 // Logger module extracted from script.ts
 // Provides logging functions for use across the WebUI
@@ -11,18 +11,6 @@ type printLog = (message: string, logLevel: LogLevel) => void;
 var notificationListener: printLog = () => { };
 var consoleListener: printLog = (message) => { console.error(message) };
 
-/**
- * 保证logs文件夹存在
- * @returns 
- */
-async function initLogDirectory(): Promise<ExecResults> {
-    return ksuExec(`mkdir -p "${logDir}" && chmod 755 "${logDir}"`);
-
-}
-
-async function clearLogs(): Promise<ExecResults> {
-    return ksuExec(`: > "${logFile}"`);
-}
 
 
 
@@ -108,13 +96,10 @@ function shouldLog(level: LogLevel): boolean {
 
 export {
     setLogLevel,
-    initLogDirectory,
     setNotificationListener,
     setConsoleListener,
     printToNotify,
     printToConsole,
-    printToFile,
-    clearLogs,
     exec,
     spawn
 };

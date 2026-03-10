@@ -1,5 +1,3 @@
-// Global application state
-
 export enum LogLevel {
     DEBUG = 'DEBUG',
     INFO = 'INFO',
@@ -37,6 +35,9 @@ function setLogLevel(level: LogLevel): void {
 function getLogLevel(): LogLevel {
     return globalLogLevel;
 }
+
+
+
 export {
     setAccPath, getAccPath, setAccVersion, getAccVersion, setAccProfilePath, getAccProfilePath,
     setLogLevel, getLogLevel

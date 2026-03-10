@@ -2,11 +2,11 @@
 import * as logger from '@/env/logger';
 import * as acca from '@/commands/acca';
 import * as command from '@/commands/command';
-import { getAccProfilePath, setAccProfilePath, LogLevel } from '@/data/state';
-import { dataDir, defaultConfigPath } from '@/config/setting';
+import { getAccProfilePath, LogLevel, setAccProfilePath } from '@/data/state';
+import { dataDir, startupProfilePath } from '@/config/setting';
 import { ProfileCard } from '@/components/profile-card';
 import { customPrompt } from '@/components/dialog';
-import { setProfilePanel } from '@/components/base';
+import { checkAccdProfile, setProfilePanel } from '@/components/base';
 
 
 
@@ -14,73 +14,81 @@ import { setProfilePanel } from '@/components/base';
 const cards: Map<string, ProfileCard> = new Map();
 let activePath: string = '';
 let container: HTMLElement | null = null;
-let ProfilePanelName='current-profile-profile';
+let ProfilePanelName = 'current-profile-profile';
 /**
  * Initialize profile tab
  */
 async function initializeProfileTab(): Promise<void> {
+}
+function clearCard(): HTMLElement | null {
     container = document.getElementById('profile-container');
     if (!container) {
         logger.printToConsole('Profile container not found', LogLevel.ERROR);
-        return;
+        return null;
     }
 
     // Clear existing cards
     cards.clear();
     container.innerHTML = '';
+    return container;
 }
-
 /**
  * Refresh all profiles
  */
 async function refreshProfile(): Promise<void> {
-    container = document.getElementById('profile-container');
-    if (!container) {
-        logger.printToConsole('Profile container not found', LogLevel.ERROR);
-        return;
-    }
+    clearCard();
+    setTimeout(async () => {
+        await checkAccdProfile(ProfilePanelName);
+        // Get current running accd config path
+        let currentProfile = getAccProfilePath();
+        if (currentProfile) {
+            setProfilePanel(ProfilePanelName, currentProfile);
+        }
 
-    // Clear existing cards
-    cards.clear();
-    container.innerHTML = '';
+        // Load startup profile
+        await addCard(startupProfilePath, true);
 
-    // Get current running accd config path
-    let currentProfile = getAccProfilePath();
-    if (currentProfile) {
-        setProfilePanel(ProfilePanelName, currentProfile);
-    }
+        // Load other profiles
+        const profilesResult = await command.loadProfilesPath();
+        if (profilesResult.errno === 0 && profilesResult.stdout) {
+            profilesResult.stdout
+                .trim()
+                .split('\n')
+                .filter(line => line.trim())
+                .forEach(filePath => {
+                    addCard(filePath.trim(), false);
+                });
+        }
 
+        // Set active card based on current config
+        activePath = currentProfile;
+        setActiveCard(activePath);
+    }, 0);
 
-    // Load default profile
-    await addCard(defaultConfigPath, true);
+}
 
-    // Load other profiles
-    const profilesResult = await command.loadProfilesPath();
-    if (profilesResult.errno === 0 && profilesResult.stdout) {
-        profilesResult.stdout
-            .trim()
-            .split('\n')
-            .filter(line => line.trim())
-            .forEach(filePath => {
-                addCard(filePath.trim(), false);
-            });
-    }
-
-    // Set active card based on current config
-    setActiveCard(activePath);
+/**
+ * Handle card selection (collapse other cards)
+ */
+function handleSelect(selectedCard: ProfileCard): void {
+    cards.forEach((card) => {
+        if (card !== selectedCard && card.getIsExpanded()) {
+            card.collapse();
+        }
+    });
 }
 
 /**
  * Add a profile card
  */
-async function addCard(configPath: string, isDefault: boolean): Promise<ProfileCard> {
+async function addCard(configPath: string, isStartup: boolean): Promise<ProfileCard> {
     const card = new ProfileCard({
         configPath,
-        isDefault,
+        isStartup: isStartup,
         onApply: handleApply,
         onCopy: handleCopy,
         onDelete: handleDelete,
-        onSelect: handleSelect
+        onSelect: handleSelect,
     });
 
     cards.set(configPath, card);
@@ -99,29 +107,19 @@ function setActiveCard(path: string): void {
         card.setActive(cardPath === path);
     });
 }
-
-/**
- * Handle card selection
- */
-function handleSelect(card: ProfileCard): void {
-    setActiveCard(card.getConfigPath());
-}
-
 /**
  * Handle apply profile
  */
 async function handleApply(card: ProfileCard): Promise<void> {
     const path = card.getConfigPath();
-    logger.printToConsole(`Applying profile: ${path}`);
-
+    await setAccProfilePath(path);
     return new Promise((resolve) => {
-        acca.restartAccdSpawn(path, {
+        acca.restartAccdSpawn({
             onExit: (code) => {
                 if (code === 0) {
                     setProfilePanel(ProfilePanelName, path);
-                    setAccProfilePath(path);
                     setActiveCard(path);
-                    logger.printToConsole('Profile applied successfully');
+                    logger.printToNotify(`Profile applied : ${path}`);
                 } else {
                     logger.printToConsole(`Failed to apply profile (exit code: ${code})`, LogLevel.ERROR);
                 }
@@ -144,7 +142,6 @@ async function handleCopy(card: ProfileCard): Promise<void> {
     if (profileName === null || !profileName) {
         return;
     }
-
     try {
         // Ensure profiles directory exists
         await command.createProfileDir();
@@ -152,12 +149,14 @@ async function handleCopy(card: ProfileCard): Promise<void> {
         const result = await command.copyProfile(path, newPath);
         if (result.errno === 0) {
             await addCard(newPath, false);
-            logger.printToConsole(`Profile copied as: ${profileName}`);
         } else {
             logger.printToConsole(`Failed to copy profile: ${result.stderr}`, LogLevel.ERROR);
         }
     } catch (e) {
         logger.printToConsole(`Copy error: ${e}`, LogLevel.ERROR);
+    }
+    finally {
+        refreshProfile();
     }
 }
 
@@ -167,26 +166,25 @@ async function handleCopy(card: ProfileCard): Promise<void> {
 async function handleDelete(card: ProfileCard): Promise<void> {
     const path = card.getConfigPath();
 
-    // Cannot delete default profile
-    if (path === defaultConfigPath) {
-        logger.printToConsole('Cannot delete default profile', LogLevel.WARN);
+    // Cannot delete startup profile
+    if (path === startupProfilePath) {
+        logger.printToNotify('Cannot delete startup profile', LogLevel.WARN);
         return;
     }
-
-    logger.printToConsole(`Deleting profile: ${path}`);
-
     try {
         // Delete file
         const result = await command.deleteProfile(path);
         if (result.errno === 0) {
             cards.delete(path);
             card.destroy();
-            logger.printToConsole('Profile deleted');
         } else {
             logger.printToConsole(`Failed to delete profile: ${result.stderr}`, LogLevel.ERROR);
         }
     } catch (e) {
         logger.printToConsole(`Delete error: ${e}`, LogLevel.ERROR);
+    }
+    finally {
+        refreshProfile();
     }
 }
 

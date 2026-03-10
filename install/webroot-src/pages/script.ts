@@ -1,6 +1,6 @@
 import { checkKSUEnvironment } from '@/env/ksu';
 import * as logger from '@/env/logger';
-import { checkId } from '@/commands/command';
+import { checkId, initLogDirectory } from '@/commands/command';
 import * as acc from '@/commands/acc';
 import { LogLevel } from '@/data/state';
 
@@ -9,91 +9,117 @@ import { $, updateStatusClass } from '@/components/base';
 import { initializeStatusTab, refreshStatus } from '@/pages/status';
 import { initializeLogsTab } from '@/pages/logs';
 import { initializeMaintenanceTab } from '@/pages/maintenance';
-import { initializeSettingsTab } from '@/pages/settings';
+import { initializeSettingsTab, refreshSettings } from '@/pages/settings';
 import { initializeDebugMode } from '@/components/console';
-import { initializeProfileTab } from '@/pages/profile';
+import { initializeProfileTab, refreshProfile } from '@/pages/profile';
 import '@/components/notification'; // side effect: register notification listener
 
 /**
- * Verify system requirements
+ * 验证系统环境要求
+ * 
+ * 验证流程：
+ * 1. 检查 Root 权限 - 通过 `id` 命令确认是否具有 root 权限
+ * 2. 检查 ACC 安装 - 确认 ACC 二进制文件是否存在并获取版本
+ * 3. 初始化 UI - 系统验证通过后初始化用户界面
+ * 
+ * 验证失败时会显示错误通知并更新状态指示器
  */
 async function verifySystem(): Promise<void> {
-    //todo 要改
     logger.printToConsole('Starting system verification...');
+    // 挂载到全局对象，便于调试调用
     (window as Record<string, unknown>).verifySystem = verifySystem;
 
+    // 获取状态显示元素
     const rootStatus = $('root-status');
     const accInstallStatus = $('acc-install-status');
 
-    if (rootStatus) rootStatus.textContent = 'Checking...';
-    if (accInstallStatus) accInstallStatus.textContent = 'Checking...';
+    // 初始化状态显示为检查中
+    if (rootStatus) {
+        rootStatus.textContent = 'Checking...';
+        updateStatusClass($('root-status'), false);
+    }
+    if (accInstallStatus) {
+        accInstallStatus.textContent = 'Checking...';
+        updateStatusClass($('acc-install-status'), false);
+    }
 
     try {
-        logger.printToConsole('Checking root access...');
-        const idResult = await checkId();
-        const idOutput = idResult?.stdout || '';
-        logger.printToConsole(`Root check result: ${idOutput}`);
+        // === 步骤1: 检查 Root 权限 ===
+        await verifyRootAccess();
 
-        if (rootStatus) {
-            rootStatus.textContent =
-                idOutput.includes('uid=0') ? 'Root access OK' : 'Root access failed';
-        }
-        updateStatusClass(rootStatus, idOutput.includes('uid=0'));
+        // === 步骤2: 检查 ACC 安装状态 ===
+        verifyAccInstallation();
 
-        if (!idOutput.includes('uid=0')) {
-            hideLoadingOverlay();
-            throw new Error('Root access not granted');
-        }
-
-        logger.printToConsole('Root access OK, checking ACC installation...');
-        const accPath = acc.getAccPath();
-        const version = acc.getAccVersion();
-        if (accInstallStatus) accInstallStatus.textContent = `Found at ${accPath}`;
-        const accVersionEl = $('acc-version');
-        if (accVersionEl) accVersionEl.textContent = version;
-        updateStatusClass(accInstallStatus, true);
-        updateStatusClass(accVersionEl, true);
-
-        const controlPanel = $('control-panel');
-        const profilePanel = $('profile-container');
-        const logPanel = $('log-panel');
-        const maintenancePanel = $('maintenance-panel');
-        const settingsPanel = $('settings-panel');
-
-        if (controlPanel) controlPanel.style.display = 'block';
-        if (profilePanel) profilePanel.style.display = 'block';
-        if (logPanel) logPanel.style.display = 'block';
-        if (maintenancePanel) maintenancePanel.style.display = 'block';
-        if (settingsPanel) settingsPanel.style.display = 'block';
-
-        logger.printToConsole('Initializing UI (non-blocking)...');
-
-        initializeUI(accPath).then(() => {
-
-            logger.printToConsole('System verification completed successfully');
-            hideLoadingOverlay();
-        }).catch((e: Error) => {
-            logger.printToNotify(`UI initialization error: ${e}`, LogLevel.ERROR);
-        });
-
-
-        logger.printToConsole('System verification completed successfully');
-        return;
+        // === 步骤3: 初始化 UI ===
+        await initializeUI();
     } catch (e) {
+        // 验证失败处理
         logger.printToNotify(`System verification failed: ${e}`, LogLevel.ERROR);
-        updateStatusClass($('root-status'), false);
-        updateStatusClass($('acc-install-status'), false);
+
+    } finally {
+        // 无论成功失败，都隐藏加载遮罩
         hideLoadingOverlay();
     }
 }
 
 /**
- * Initialize UI components
- * @param accPath
+ * 验证 Root 权限
+ * @param statusEl 状态显示元素
+ * @throws 如果未获取到 root 权限
  */
-async function initializeUI(accPath: string): Promise<void> {
-    logger.printToFile(`Initializing with ACC path: ${accPath}`);
-    //todo 需要把页面初始化和加载数据区分开
+async function verifyRootAccess(): Promise<void> {
+    logger.printToConsole('Checking root access...');
+    // 获取状态显示元素
+    const rootStatus = $('root-status');
+    const idResult = await checkId();
+    const hasRoot = idResult.errno === 0 && idResult.stdout.includes('uid=0');
+    if (rootStatus) {
+        rootStatus.textContent = hasRoot ? 'Root access OK' : 'Root access failed';
+        updateStatusClass(rootStatus, hasRoot);
+    }
+    if (!hasRoot) {
+        throw new Error('Root access not granted');
+    }
+}
+
+/**
+ * 验证 ACC 安装状态
+ * @param statusEl 状态显示元素
+ */
+function verifyAccInstallation(): void {
+    // 初始化状态显示为检查中
+    const accPath = acc.getAccPath();
+    if (accPath) {
+        const accInstallStatus = $('acc-install-status');
+        if (accInstallStatus) {
+            accInstallStatus.textContent = `Found at ${accPath}`;
+            updateStatusClass(accInstallStatus, true);
+        }
+
+        const accVersionEl = $('acc-version');
+        if (accVersionEl) {
+            const version = acc.getAccVersion();
+            accVersionEl.textContent = version;
+            updateStatusClass(accVersionEl, true);
+        }
+    }
+}
+
+/**
+ * Initialize UI components
+ */
+async function initializeUI(): Promise<void> {
+    const controlPanel = $('control-panel');
+    const profilePanel = $('profile-container');
+    const logPanel = $('log-panel');
+    const maintenancePanel = $('maintenance-panel');
+    const settingsPanel = $('settings-panel');
+
+    if (controlPanel) controlPanel.style.display = 'block';
+    if (profilePanel) profilePanel.style.display = 'block';
+    if (logPanel) logPanel.style.display = 'block';
+    if (maintenancePanel) maintenancePanel.style.display = 'block';
+    if (settingsPanel) settingsPanel.style.display = 'block';
 
     initializeMainTabs();
     // Initialize debug mode toggle
@@ -104,9 +130,9 @@ async function initializeUI(accPath: string): Promise<void> {
     initializeMaintenanceTab();
     initializeSettingsTab();
     initializeProfileTab();
-    refreshStatus();
     // Close modals when clicking outside
     window.addEventListener('click', handleModalClick);
+    refreshStatus();
 }
 
 // Handle modal click to close when clicking outside
@@ -132,15 +158,22 @@ function initializeMainTabs(): void {
 function handleNavButtonClick(e: Event): void {
     const button = e.currentTarget as HTMLElement;
     const tabId = button.getAttribute('data-main-tab');
-
+    // 如果点击的是当前已激活的按钮，不做任何操作
+    if (button.classList.contains('active')) {
+        return;
+    }
     document.querySelectorAll('.nav-button').forEach((btn: Element) => btn.classList.remove('active'));
     document.querySelectorAll('.main-tab-pane').forEach((pane: Element) => pane.classList.remove('active'));
-
     button.classList.add('active');
     if (tabId) {
         const tab = $(tabId);
         if (tab) tab.classList.add('active');
-        //todo 数据将会在点击后重新加载
+        switch (tabId) {
+            case 'status-tab': refreshStatus(); break;
+            case 'profile-tab': refreshProfile(); break;
+            case 'settings-tab': refreshSettings(); break;
+            default: break;
+        }
     }
     logger.printToConsole(`Switched to tab: ${tabId}`, LogLevel.DEBUG);
 }
@@ -165,7 +198,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             logger.printToNotify('KernelSU API not available.', LogLevel.ERROR);
             return;
         }
-        const initLogResult = await logger.initLogDirectory()
+        const initLogResult = await initLogDirectory()
         if (initLogResult.errno !== 0) {
             logger.printToNotify(`Logging initialization failed`, LogLevel.ERROR);
             return;
@@ -174,8 +207,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             logger.printToNotify('ACC binary not found', LogLevel.ERROR);
             return;
         }
-        logger.printToFile('WebView starting');
-
         await verifySystem();
 
     } catch (e) {

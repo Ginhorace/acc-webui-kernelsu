@@ -2,6 +2,7 @@
 import * as logger from '@/env/logger';
 import { LogLevel } from '@/data/state';
 import { $ } from '@/components/base';
+
 logger.setConsoleListener((message, level) => {
     switch (level) {
         case LogLevel.ERROR: console.error(message); break;
@@ -20,7 +21,9 @@ logger.setConsoleListener((message, level) => {
         if (lastUpdated) lastUpdated.textContent = new Date().toLocaleString();
     }
 });
-// Initialize debug mode from localStorage
+/**
+ *  Initialize debug mode from localStorage
+ */
 function initializeDebugMode(): void {
     const debugConsoleCard = $('debug-console-card');
     const debugModeToggle = $('debug-mode-toggle') as HTMLSelectElement | null;
@@ -44,7 +47,11 @@ function initializeDebugMode(): void {
     });
 }
 
-// Handle debug mode toggle change
+/**
+ *  Handle debug mode toggle change
+ * @param select 
+ * @param debugConsoleCard 
+ */
 function handleDebugModeChange(select: HTMLSelectElement, debugConsoleCard: HTMLElement | null): void {
     const isEnabled = select.value === 'true';
     localStorage.setItem('debugModeEnabled', String(isEnabled));
@@ -52,11 +59,9 @@ function handleDebugModeChange(select: HTMLSelectElement, debugConsoleCard: HTML
     if (debugConsoleCard) {
         if (isEnabled) {
             debugConsoleCard.classList.add('enabled');
-            logger.printToNotify('Debug console enabled - visible on all pages');
             logger.setLogLevel(LogLevel.DEBUG);
         } else {
             debugConsoleCard.classList.remove('enabled');
-            logger.printToNotify('Debug console disabled');
             logger.setLogLevel(LogLevel.INFO);
         }
     }

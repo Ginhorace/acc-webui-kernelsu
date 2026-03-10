@@ -2,28 +2,26 @@
 import * as logger from '@/env/logger';
 import * as acc from '@/commands/acc';
 import * as acca from '@/commands/acca';
-import * as command from '@/commands/command';
-
 import { customPrompt } from '@/components/dialog';
 import { customConfirm } from '@/components/confirm';
-import { $, setOnClick, setButtonLoading, updateStatusClass, activateWithAbort, ButtonWithAbort, setProfilePanel, isForceCharging } from '@/components/base';
-import { getAccProfilePath, setAccProfilePath, LogLevel } from '@/data/state';
-import { defaultConfigPath } from '@/config/setting';
+import * as base from '@/components/base';
+import { LogLevel, setAccProfilePath } from '@/data/state';
+import { checkBatteryCapacity } from '@/commands/command';
 
 // Cached DOM elements
 const elements = {
-    daemonStatus: () => $('daemon-status'),
-    batteryLevel: () => $('battery-level'),
-    batteryBar: () => $('battery-bar'),
-    chargingStatus: () => $('charging-status'),
-    currentLimit: () => $('current-limit'),
-    temperature: () => $('temperature'),
-    powerDisplay: () => $('power-display'),
-    chargeType: () => $('charge-type'),
-    realLevel: () => $('real-level'),
+    batteryLevel: () => base.$('battery-level'),
+    batteryBar: () => base.$('battery-bar'),
+    chargingStatus: () => base.$('charging-status'),
+    currentLimit: () => base.$('current-limit'),
+    temperature: () => base.$('temperature'),
+    powerDisplay: () => base.$('power-display'),
+    chargeType: () => base.$('charge-type'),
+    realLevel: () => base.$('real-level'),
 };
 
 let ProfilePanelName = "current-profile-status";
+
 /**
  * Safely update element text content
  */
@@ -32,27 +30,25 @@ function setTextContent(getElement: () => HTMLElement | null, value: string): vo
     if (el) el.textContent = value;
 }
 
-
-//todo 把刷新改成自动刷新
 /**
  * Initialize status tab event listeners
  */
 function initializeStatusTab(): void {
-    setOnClick('battery-health-btn', handleBatteryHealth);
-    setOnClick('test-switches-btn', handleTestSwitches);
-    setOnClick('disable-charging-btn', handleDisableCharging);
-    setOnClick('enable-charging-btn', handleEnableCharging);
-    setOnClick('force-charge-btn', handleForceCharge);
-    setOnClick('reset-battery-stats-btn', handleResetBatteryStats);
-    setOnClick('refresh-btn', handleRefresh);
-    setOnClick('restart-btn', handleRestart);
-    setOnClick('stop-btn', handleStop);
-    setOnClick('detailed-info-btn', handleDetailedInfo);
+    base.setOnClick('battery-health-btn', handleBatteryHealth);
+    base.setOnClick('test-switches-btn', handleTestSwitches);
+    base.setOnClick('disable-charging-btn', handleDisableCharging);
+    base.setOnClick('enable-charging-btn', handleEnableCharging);
+    base.setOnClick('force-charge-btn', handleForceCharge);
+    base.setOnClick('reset-battery-stats-btn', handleResetBatteryStats);
+    base.setOnClick('refresh-btn', handleRefresh);
+    base.setOnClick('restart-btn', handleRestart);
+    base.setOnClick('stop-btn', handleStop);
+    base.setOnClick('detailed-info-btn', handleDetailedInfo);
 
     // Test switches modal events
-    setOnClick('run-test-switches', handleRunTestSwitches);
-    setOnClick('stop-test-switches', handleStopTestSwitches);
-    setOnClick('close-test-switches', handleCloseTestSwitches);
+    base.setOnClick('run-test-switches', handleRunTestSwitches);
+    base.setOnClick('stop-test-switches', handleStopTestSwitches);
+    base.setOnClick('close-test-switches', handleCloseTestSwitches);
 
 }
 
@@ -62,50 +58,33 @@ function initializeStatusTab(): void {
  */
 async function refreshStatus(): Promise<void> {
     if (!acc.getAccPath()) {
-        logger.printToConsole('ACC path not available for status update', LogLevel.ERROR);
+        logger.printToNotify('ACC not available', LogLevel.ERROR);
         return;
     }
+    setTimeout(async () => {
+        try {
+            await base.checkAccdProfile(ProfilePanelName);
 
-    try {
-        await checkAccdProfile()
+            const result = await acca.showInfo();
+            const status = parseBatteryInfo(result.stdout);
+            // Update battery level
+            updateBatteryLevel(status);
 
-        const result = await acca.showInfo();
-        const status = parseBatteryInfo(result.stdout);
-        // Update battery level
-        updateBatteryLevel(status);
-
-        // Update other metrics
-        setTextContent(elements.chargingStatus, status.status || '-');
-        setTextContent(elements.currentLimit, status.current_now || '-');
-        setTextContent(elements.temperature, status.temp || '-');
-        setTextContent(elements.powerDisplay, status.power_now || '-');
-        setTextContent(elements.chargeType, status.charge_type || 'N/A');
-        setTextContent(elements.realLevel, status.real_level || 'N/A');
-
-        logger.printToConsole('Status refreshed');
-    } catch (e) {
-        logger.printToNotify(`Status load failed: ${e}`, LogLevel.ERROR);
-        const el = elements.daemonStatus();
-        if (el) {
-            el.textContent = 'Stop';
-            updateStatusClass(el, false);
+            // Update other metrics
+            setTextContent(elements.chargingStatus, status.status || '-');
+            setTextContent(elements.currentLimit, status.current_now || '-');
+            setTextContent(elements.temperature, status.temp || '-');
+            setTextContent(elements.powerDisplay, status.power_now || '-');
+            setTextContent(elements.chargeType, status.charge_type || 'N/A');
+            setTextContent(elements.realLevel, status.real_level || 'N/A');
+        } catch (e) {
+            logger.printToConsole(`Status load failed: ${e}`, LogLevel.ERROR);
         }
-    }
+    }, 0);
+
+
 }
-async function checkAccdProfile() {
-    // Update daemon status
-    await updateDaemonStatus();
-    //todo 替换updateDaemonStatus，删除daemonStatus
-    const configResult = await command.checkAccdProfile();
-    if (configResult.errno === 0) {
-        let currentProfile = configResult.stdout ? defaultConfigPath : configResult.stdout;
-        setAccProfilePath(configResult.stdout);
-        setProfilePanel(ProfilePanelName, currentProfile);
-    }
-    else {
-        setAccProfilePath('is not running');
-    }
-}
+
 
 
 /**
@@ -147,27 +126,10 @@ function updateBatteryLevel(status: Record<string, string>): void {
 
 
 /**
- * Update daemon status display
- */
-async function updateDaemonStatus(): Promise<boolean> {
-    const el = elements.daemonStatus();
-    const result = await acc.checkAccd();
-
-    //todo 与strings有关
-    let isRunning = result.stdout.includes('PID');
-    if (el) {
-        el.textContent = isRunning ? 'Running' : 'Stop';
-        updateStatusClass(el, isRunning);
-    }
-    return isRunning;
-}
-
-
-/**
  * Handle refresh button click - toggle auto refresh
  */
-function handleRefresh(button: ButtonWithAbort): void {
-    activateWithAbort(
+function handleRefresh(button: base.ButtonWithAbort): void {
+    base.activateWithAbort(
         button,
         async (btn) => {
             btn.textContent = 'Refreshing';
@@ -187,26 +149,29 @@ function handleRefresh(button: ButtonWithAbort): void {
  * Handle battery health check
  */
 async function handleBatteryHealth(button: HTMLButtonElement): Promise<void> {
-    ///当没有输入数字时，其实没有自动检测，如果想检测可以到/sys/class/power_supply/*/charge_full_design，或者是/sys/class/power_supply/battery/uevent，找到POWER_SUPPLY_CHARGE_FULL_DESIGN 结果值/1000就是
-    const mAh = await customPrompt('Enter battery capacity in mAh (leave empty to auto-detect):');
+    let resutlt=await checkBatteryCapacity();
+    let capacity='';
+    if(resutlt.errno===0&&resutlt.stdout){
+        capacity=(Number(resutlt.stdout) / 1000).toString();
+    }
+    const mAh = await customPrompt('Enter battery capacity in mAh (leave empty to auto-detect):',capacity);
     if (mAh !== null) {
-        setButtonLoading(button, true);
+        base.setButtonLoading(button, true);
         acc.printHealth(mAh).then((result => {
             if (result.errno !== 0) {
                 logger.printToConsole(`acc -H error:\n${result.stderr}`);
                 return;
             }
             const healthValue = result.stdout.trim();
-            const span = $('battery-health');
+            const span = base.$('battery-health');
             if (span) {
                 span.textContent = healthValue;
-                updateStatusClass(span, true);
-                logger.printToNotify('Battery health: ' + healthValue);
+                base.updateStatusClass(span, true);
             }
         })).catch((e => {
-            logger.printToNotify(`Battery health check failed: ${e}`, LogLevel.ERROR);
+            logger.printToConsole(`Battery health check failed: ${e}`, LogLevel.ERROR);
         })).finally(() => {
-            setButtonLoading(button, false);
+            base.setButtonLoading(button, false);
         });
     }
 }
@@ -215,10 +180,10 @@ async function handleBatteryHealth(button: HTMLButtonElement): Promise<void> {
 /**
  * Handle disable charging
  */
-async function handleDisableCharging(button: ButtonWithAbort): Promise<void> {
-    let enableCharging = $('enable-charging-btn') as HTMLButtonElement;
-    let forceCharging = $('force-charge-btn') as HTMLButtonElement;
-    activateWithAbort(
+async function handleDisableCharging(button: base.ButtonWithAbort): Promise<void> {
+    let enableCharging = base.$('enable-charging-btn') as HTMLButtonElement;
+    let forceCharging = base.$('force-charge-btn') as HTMLButtonElement;
+    base.activateWithAbort(
         button,
         async (btn) => {
             // 未激活时弹出 prompt
@@ -257,10 +222,10 @@ async function handleDisableCharging(button: ButtonWithAbort): Promise<void> {
 /**
  * Handle enable charging
  */
-async function handleEnableCharging(button: ButtonWithAbort): Promise<void> {
-    let disableCharging = $('disable-charging-btn') as HTMLButtonElement;
-    let forceCharging = $('force-charge-btn') as HTMLButtonElement;
-    activateWithAbort(
+async function handleEnableCharging(button: base.ButtonWithAbort): Promise<void> {
+    let disableCharging = base.$('disable-charging-btn') as HTMLButtonElement;
+    let forceCharging = base.$('force-charge-btn') as HTMLButtonElement;
+    base.activateWithAbort(
         button,
         async (btn) => {
             const input = await customPrompt('Enable charging to battery level (%) or for duration (e.g., 30m):', '80%');
@@ -297,10 +262,11 @@ async function handleEnableCharging(button: ButtonWithAbort): Promise<void> {
 /**
  * Handle force charge
  */
-async function handleForceCharge(button: ButtonWithAbort): Promise<void> {
-    let disableCharging = $('disable-charging-btn') as HTMLButtonElement;
-    let enableCharging = $('enable-charging-btn') as HTMLButtonElement;
-    activateWithAbort(
+async function handleForceCharge(button: base.ButtonWithAbort): Promise<void> {
+    let disableCharging = base.$('disable-charging-btn') as HTMLButtonElement;
+    let enableCharging = base.$('enable-charging-btn') as HTMLButtonElement;
+    let restartBtn = base.$('restart-btn') as HTMLButtonElement;
+    base.activateWithAbort(
         button,
         async (btn) => {
             const input = await customPrompt('Force charge to battery level (%) or leave empty for 100%:', '100');
@@ -308,27 +274,37 @@ async function handleForceCharge(button: ButtonWithAbort): Promise<void> {
             const content = `Force charging to ${input.trim() || '100%'}`;
             if (disableCharging) disableCharging.style.visibility = 'hidden';
             if (enableCharging) enableCharging.style.visibility = 'hidden';
+            if (restartBtn) restartBtn.style.visibility = 'hidden';
             btn.textContent = content;
             logger.printToNotify(content);
-            let result = await acc.forceCharging();
-            if (result.errno === 0) {
-                const abortController = new AbortController();
-                abortController.signal.addEventListener('abort', () => {
-                    if (btn._abortController === abortController) {
-                        btn._abortController = null;
-                        btn.textContent = 'Force charge';
-                        if (disableCharging) disableCharging.style.visibility = 'visible';
-                        if (enableCharging) enableCharging.style.visibility = 'visible';
-                        logger.printToNotify('Force charge stopped');
-                        //todo top accd then delete $TMPDIR/.acc-f-config
-                        acca.restartAccdSpawn(defaultConfigPath, {
-                            onExit: () => refreshStatus()
-                        });
+            const abortController = acc.forceChargingSpawn(input, {
+                onStdout: (data) => logger.printToConsole(data),
+                onStderr: (data) => logger.printToConsole(data, LogLevel.ERROR),
+                onExit: (code) => {
+                    if (code === 0) {
+                        logger.printToNotify('Force charge start');
                     }
-                });
-                return abortController;
-            }
-            else return null;
+                    base.checkAccdProfile(ProfilePanelName);
+                },
+                onError: (err) => {
+                    logger.printToNotify(`Force charge error: ${err}`, LogLevel.ERROR);
+                }
+            });
+            abortController.signal.addEventListener('abort', () => {
+                if (btn._abortController === abortController) {
+                    btn._abortController = null;
+                    btn.textContent = 'Force charge';
+                    if (disableCharging) disableCharging.style.visibility = 'visible';
+                    if (enableCharging) enableCharging.style.visibility = 'visible';
+                    if (restartBtn) restartBtn.style.visibility = 'visible';
+                    logger.printToNotify('Force charge stopped');
+                    setAccProfilePath('');
+                    acca.restartAccdSpawn({
+                        onExit: () => base.checkAccdProfile(ProfilePanelName)
+                    });
+                }
+            });
+            return abortController;
         }
     );
 }
@@ -338,22 +314,20 @@ async function handleForceCharge(button: ButtonWithAbort): Promise<void> {
 
 
 /**
- * todo 可能会删除在profile界面启动
+ * 
  * Handle restart accd 
  */
-function handleRestart(button: ButtonWithAbort): void {
-    setButtonLoading(button, true);
-    let currentProfile = getAccProfilePath();
-    acca.restartAccdSpawn(isForceCharging(currentProfile) ? '' : currentProfile, {
+function handleRestart(button: base.ButtonWithAbort): void {
+    base.setButtonLoading(button, true);
+    acca.restartAccdSpawn({
         onExit: (code) => {
             logger.printToConsole(`Restart accd exited with code: ${code}`);
             if (code === 0) {
-                logger.printToNotify('accd restarted successfully');
             } else {
                 logger.printToNotify(`accd restart failed with code: ${code}`, LogLevel.ERROR);
             }
-            setButtonLoading(button, false);
-            refreshStatus();
+            base.setButtonLoading(button, false);
+            base.checkAccdProfile(ProfilePanelName);
         },
     });
 
@@ -363,17 +337,16 @@ function handleRestart(button: ButtonWithAbort): void {
  * Handle stop accd
  */
 function handleStop(button: HTMLButtonElement): void {
-    setButtonLoading(button, true);
+    base.setButtonLoading(button, true);
     acca.stopAccdSpawn({
         onExit: (code) => {
             logger.printToConsole(`Stop accd exited with code: ${code}`);
             if (code === 0) {
-                logger.printToNotify('accd stopped successfully');
             } else {
                 logger.printToNotify(`accd stop failed with code: ${code}`, LogLevel.ERROR);
             }
-            setButtonLoading(button, false);
-            refreshStatus();
+            base.setButtonLoading(button, false);
+            base.checkAccdProfile(ProfilePanelName);
         },
     });
 }
@@ -383,16 +356,15 @@ function handleStop(button: HTMLButtonElement): void {
  * Handle detailed info toggle
  */
 async function handleDetailedInfo(button: HTMLButtonElement): Promise<void> {
-    const panel = $('detailed-info-panel');
+    const panel = base.$('detailed-info-panel');
     if (panel && (panel.style.display === 'none' || !panel.style.display)) {
         try {
             const result = await acca.showInfo();
             const info = result?.stdout || '';
-            const content = $('detailed-info-content');
+            const content = base.$('detailed-info-content');
             if (content) content.textContent = info;
             panel.style.display = 'block';
             button.textContent = 'Hide Detailed Info';
-            logger.printToConsole('Detailed battery info displayed');
         } catch (e) {
             logger.printToNotify(`Failed to get detailed info: ${e}`, LogLevel.ERROR);
         }
@@ -415,7 +387,6 @@ async function handleResetBatteryStats(): Promise<void> {
             } else {
                 logger.printToNotify('Battery statistics reset: ' + resultStr.trim());
             }
-            await refreshStatus();
         } catch (e) {
             logger.printToNotify(`Reset battery stats failed: ${e}`, LogLevel.ERROR);
         }
@@ -426,9 +397,8 @@ async function handleResetBatteryStats(): Promise<void> {
  * Handle test switches button click
  */
 function handleTestSwitches(): void {
-    //todo
-    const modal = $('test-switches-modal');
-    const output = $('test-switches-output');
+    const modal = base.$('test-switches-modal');
+    const output = base.$('test-switches-output');
     if (modal) modal.style.display = 'block';
     if (output) output.textContent = 'Click "Run Test" to start testing charging switches...\n\nThis may take several minutes. Ensure charger is plugged in.\n';
 }
@@ -436,9 +406,9 @@ function handleTestSwitches(): void {
  * Handle close test switches modal
  */
 function handleCloseTestSwitches(): void {
-    const stopBtn = $('stop-test-switches') as HTMLButtonElement;
+    const stopBtn = base.$('stop-test-switches') as HTMLButtonElement;
     if (stopBtn) handleStopTestSwitches(stopBtn);
-    const modal = $('test-switches-modal');
+    const modal = base.$('test-switches-modal');
     if (modal) modal.style.display = 'none';
 }
 
@@ -449,8 +419,8 @@ let testSwitchesAbortController: AbortController | null = null;
  * Handle run test switches
  */
 function handleRunTestSwitches(runBtn: HTMLButtonElement): void {
-    const stopBtn = $('stop-test-switches') as HTMLButtonElement;
-    const outputElement = $('test-switches-output');
+    const stopBtn = base.$('stop-test-switches') as HTMLButtonElement;
+    const outputElement = base.$('test-switches-output');
 
     if (stopBtn) stopBtn.style.display = 'inline-block';
     runBtn.style.display = 'none';
@@ -486,7 +456,7 @@ function handleRunTestSwitches(runBtn: HTMLButtonElement): void {
  * Handle stop test switches
  */
 function handleStopTestSwitches(stopBtn: HTMLButtonElement): void {
-    const runBtn = $('run-test-switches');
+    const runBtn = base.$('run-test-switches');
     if (runBtn) runBtn.style.display = '';
     stopBtn.style.display = 'none';
 
@@ -494,7 +464,7 @@ function handleStopTestSwitches(stopBtn: HTMLButtonElement): void {
         testSwitchesAbortController.abort();
         testSwitchesAbortController = null;
     }
-    const outputElement = $('test-switches-output');
+    const outputElement = base.$('test-switches-output');
     if (outputElement) {
         outputElement.textContent += `\n\nTest cancelled`;
     }

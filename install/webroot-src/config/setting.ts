@@ -6,4 +6,6 @@ export const execDir = '/data/adb/vr25/acc';
 export const dataDir = '/data/adb/vr25/acc-data';
 export const logDir = '/data/adb/vr25/acc-data/logs';
 export const logFile = '/data/adb/vr25/acc-data/logs/webview-acc.log';
-export const defaultConfigPath = dataDir + '/config.txt';
+export const defaultProfilePath = execDir + '/default-config.txt';
+export const startupProfilePath = dataDir + '/config.txt';
+export const forceChargingPath =tmpDir + '/.acc-f-config';

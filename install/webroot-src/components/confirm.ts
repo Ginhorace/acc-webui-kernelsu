@@ -107,7 +107,7 @@ async function customConfirm(message: string): Promise<boolean> {
 }
 
 /**
- * 兼容性 confirm 函数，优先使用原生 confirm，失败时回退到自定义对话框
+ * 兼容性 confirm 函数，优先使用原生 confirm，失败时回退到自定义对话框，kernelsu环境存在window.confirm方法但是无法执行
  * @deprecated
  * @param message - 确认消息
  * @returns Promise<boolean> - true 表示确认，false 表示取消

@@ -128,6 +128,24 @@ async function forceCharging(input: string = ''): Promise<ExecResults> {
 }
 
 /**
+ * -f|--force|--full [capacity] [-a]   Charge once to a given capacity (spawn mode)
+ * @param input capacity or empty for 100%
+ * @param options 选项（包含回调）
+ * @returns AbortController 用于取消进程
+ */
+function forceChargingSpawn(
+    input: string = '',
+    options: {
+        onStdout?: (data: string) => void;
+        onStderr?: (data: string) => void;
+        onExit?: (code: number) => void;
+        onError?: (err: any) => void;
+    } = {}
+): AbortController {
+    return spawnAcc(['-f', input.trim()], options);
+}
+
+/**
  *   -R|--resetbs   Reset battery stats
  *    e.g., acc -R
  * @returns 
@@ -286,6 +304,7 @@ export {
     disableChargingSpawn,
     enableChargingSpawn,
     forceCharging,
+    forceChargingSpawn,
     resetStats,
     checkAccd,
     exportLogsSpawn,

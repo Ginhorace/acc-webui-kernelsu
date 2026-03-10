@@ -1,9 +1,17 @@
 // Base utilities - Common DOM and UI helper functions
 
-import { tmpDir } from "@/config/setting";
+import { startupProfilePath, forceChargingPath } from "@/config/setting";
+import * as command from '@/commands/command';
+import { printToConsole } from "@/env/logger";
+import { LogLevel, setAccProfilePath } from "@/data/state";
+
+// Extend HTMLButtonElement to support abort controller
+interface ButtonWithAbort extends HTMLButtonElement {
+    _abortController?: AbortController | null;
+}
 
 /**
- * Get element by ID
+ * 简化getElementById方法
  * @param id Element ID
  * @returns HTMLElement or null
  */
@@ -20,10 +28,7 @@ function setOnClick(id: string, handler: (btn: HTMLButtonElement) => void | Prom
     const element = $(id) as HTMLButtonElement | null;
     element?.addEventListener('click', () => handler(element));
 }
-// Extend HTMLButtonElement to support abort controller
-interface ButtonWithAbort extends HTMLButtonElement {
-    _abortController?: AbortController | null;
-}
+
 
 /**
  * Toggle button state with cancelable operation
@@ -100,11 +105,54 @@ function parseConfig(config: string): Record<string, string> {
 
     return configMap;
 }
+
+/**
+ * 检查配置文件路径并更新panel
+ * @param profilePanel 
+ */
+async function checkAccdProfile(profilePanel: string) {
+    const configResult = await command.checkAccdProfile();
+    if (configResult.errno === 0) {
+        printToConsole(configResult.stdout, LogLevel.DEBUG);
+        const currentProfile = configResult.stdout?.trim() || startupProfilePath;
+        setProfilePanel(profilePanel, currentProfile);
+        setAccProfilePath(currentProfile);
+    }
+    else {
+        //accd没有运行时
+        setProfilePanel(profilePanel, '');
+        setAccProfilePath('');
+    }
+}
+/**
+ * 根据配置路径结果设置panel内容
+ * @param panelName 
+ * @param path 
+ */
 function setProfilePanel(panelName: string, path: string) {
-    ($(panelName) as HTMLDivElement).textContent = 'active:' + isForceCharging(path) ? 'force charging' : path;
+    const el = $(panelName);
+    if (el) {
+        let displayName: string;
+        if (!path) {
+            displayName = 'accd: Not Running';
+        } else if (path === forceChargingPath) {
+            displayName = 'accd: Force Charging';
+        } else if (path === startupProfilePath) {
+            displayName = 'accd profile:Startup';
+        } else {
+            displayName = 'accd profile:' + (path.split('/').pop() || path);
+        }
+        el.textContent = displayName;
+    }
 }
+/**
+ * 检查是否时强制充电配置路径
+ * @param path 
+ * @returns 
+ */
 function isForceCharging(path: string) {
-    return path.includes(tmpDir + '/.acc-f-config')
+    return path.includes(forceChargingPath);
 }
-export { $, setOnClick, activateWithAbort, setButtonLoading, updateStatusClass, setProfilePanel, parseConfig, isForceCharging }
+
+export { $, setOnClick, activateWithAbort, setButtonLoading, updateStatusClass, setProfilePanel, parseConfig, isForceCharging, checkAccdProfile }
 export type { ButtonWithAbort };
