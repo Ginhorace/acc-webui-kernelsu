@@ -1,202 +1,15 @@
-// Debug console elements
-const debugConsole = document.getElementById('debug-console');
-const lastUpdated = document.getElementById('last-updated');
+import { checkKSUEnvironment } from './ksu.js';
+import { initLogDirectory,showNotification,hideNotification,printLogToConsole, printLogToFile,  getRecentLogs, clearLogs } from './logger.js';
+import { checkAccd,checkId,showReadme,showLogTail} from './command.js'
+import { execAccAndLog, getAccPath, getAccVersion, initAccPath } from './acc.js';
 
-// Enhanced logging system. For now will use the default location.
-const logManager = {
-    logDir: '/data/adb/vr25/acc-data/logs',
-    logFile: '/data/adb/vr25/acc-data/logs/webview-acc.log',
-    maxLogLines: 500,
-    logLevel: 'DEBUG',
+import { customPrompt } from './dialog.js'; 
+import { initializeConfigUI } from './config.js'
 
-    ensureLogDirectory: async function () {
-        try {
-            await this.executeCommand(`mkdir -p "${this.logDir}" && chmod 755 "${this.logDir}"`);
-            await this.info(`Log directory ensured at ${this.logDir}`);
-            return true;
-        } catch (e) {
-            console.error(`Failed to create log directory: ${e}`);
-            return false;
-        }
-    },
-
-    executeCommand: async function (command) {
-        return new Promise((resolve, reject) => {
-            if (typeof ksu !== 'undefined' && ksu.exec) {
-                const callback = `log_callback_${Date.now()}`;
-                window[callback] = function (errno, stdout, stderr) {
-                    delete window[callback];
-                    if (errno === 0) {
-                        resolve(stdout);
-                    } else {
-                        reject(stderr || `Command failed with error ${errno}`);
-                    }
-                };
-                ksu.exec(command, callback);
-            } else {
-                reject("KernelSU API not available");
-            }
-        });
-    },
-
-    writeLogInternal: async function (level, message) {
-        if (this.shouldLog(level)) {
-            try {
-                const timestamp = new Date().toISOString();
-                const logEntry = `[${timestamp}] [${level}] ${message}`;
-                await this.executeCommand(`echo '${logEntry.replace(/'/g, "'\\''")}' >> "${this.logFile}"`);
-                return true;
-            } catch (e) {
-                console.error(`Failed to write log: ${e}`);
-                return false;
-            }
-        }
-        return false;
-    },
-
-    shouldLog: function (level) {
-        const levels = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
-        return levels.indexOf(level) >= levels.indexOf(this.logLevel);
-    },
-
-    debug: function (message) { return this.writeLogInternal('DEBUG', message); },
-    info: function (message) { return this.writeLogInternal('INFO', message); },
-    warn: function (message) { return this.writeLogInternal('WARN', message); },
-    error: function (message) { return this.writeLogInternal('ERROR', message); },
-
-    readLogs: async function () {
-        try {
-            if (!(await this.ensureLogDirectory())) return "Log directory not accessible";
-
-            const fileExists = await this.executeCommand(`[ -f "${this.logFile}" ] && echo "exists"`)
-                .then(output => output.includes('exists'))
-                .catch(() => false);
-
-            if (!fileExists) {
-                await this.executeCommand(`touch "${this.logFile}" && chmod 644 "${this.logFile}"`);
-                return "New log file created";
-            }
-
-            let logs = await this.executeCommand(`cat "${this.logFile}"`);
-            const lineCount = logs.split('\n').filter(line => line.trim()).length;
-
-            if (lineCount > this.maxLogLines) {
-                await this.rotateLogs();
-                logs = await this.executeCommand(`cat "${this.logFile}"`);
-            }
-
-            return logs || "No logs available";
-        } catch (e) {
-            return `Error reading logs: ${e}`;
-        }
-    },
-
-    rotateLogs: async function () {
-        try {
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const rotatedFile = `${this.logFile}.${timestamp}`;
-            await this.executeCommand(`mv "${this.logFile}" "${rotatedFile}" && touch "${this.logFile}" && chmod 644 "${this.logFile}"`);
-            await this.info(`Logs rotated to ${rotatedFile}`);
-            return true;
-        } catch (e) {
-            await this.error(`Log rotation failed: ${e}`);
-            return false;
-        }
-    },
-
-    clearLogs: async function () {
-        try {
-            await this.executeCommand(`echo "" > "${this.logFile}"`);
-            await this.info("Logs cleared");
-            return true;
-        } catch (e) {
-            await this.error(`Failed to clear logs: ${e}`);
-            return false;
-        }
-    },
-
-    getRecentLogs: async function (lines = 100) {
-        try {
-            const logs = await this.executeCommand(`tail -n ${lines} "${this.logFile}"`);
-            return logs || "No recent logs available";
-        } catch (e) {
-            return `Error getting recent logs: ${e}`;
-        }
-    }
-};
-
-function debugLog(message, level = 'DEBUG') {
-    const timestamp = new Date().toLocaleTimeString();
-    const logMessage = `[${timestamp}] ${message}`;
-
-    debugConsole.textContent += `${logMessage}\n`;
-    debugConsole.scrollTop = debugConsole.scrollHeight;
-    lastUpdated.textContent = new Date().toLocaleString();
-
-    switch (level) {
-        case 'ERROR': logManager.error(message); break;
-        case 'WARN': logManager.warn(message); break;
-        case 'INFO': logManager.info(message); break;
-        default: logManager.debug(message);
-    }
+// Shorthand for document.getElementById
+function $(id) {
+    return document.getElementById(id);
 }
-
-const commandExecutor = {
-    exec: function (command, args = [], timeout = 10000) {
-        return new Promise((resolve, reject) => {
-            debugLog(`Executing: ${command} ${args.join(' ')}`, 'DEBUG');
-
-            if (typeof ksu !== 'undefined' && ksu.exec) {
-                const callback = `cmd_callback_${Date.now()}`;
-                let timedOut = false;
-                const timer = setTimeout(() => {
-                    timedOut = true;
-                    delete window[callback];
-                    reject(`Command timed out after ${timeout}ms`);
-                }, timeout);
-
-                window[callback] = function (errno, stdout, stderr) {
-                    if (timedOut) return;
-                    clearTimeout(timer);
-                    delete window[callback];
-
-                    if (errno === 0) {
-                        resolve(stdout);
-                    } else {
-                        reject(stderr || `Command failed with error ${errno}`);
-                    }
-                };
-
-                const fullCmd = [command, ...args].map(arg =>
-                    arg.includes(' ') ? `"${arg.replace(/"/g, '\\"')}"` : arg
-                ).join(' ');
-
-                try {
-                    ksu.exec(fullCmd, callback);
-                } catch (e) {
-                    clearTimeout(timer);
-                    reject(`Execution error: ${e}`);
-                }
-            } else {
-                reject("KernelSU API not available");
-            }
-        });
-    }
-};
-
-function showError(message, type = 'error') {
-    const errorBox = document.getElementById('error-display');
-    errorBox.textContent = message;
-    errorBox.className = `error-box ${type}`;
-    errorBox.style.display = 'block';
-    debugLog(`${type.toUpperCase()}: ${message}`, 'INFO');
-    setTimeout(hideError, 5000);
-}
-
-function hideError() {
-    document.getElementById('error-display').style.display = 'none';
-}
-
 function setButtonLoading(button, loading = true) {
     if (loading) {
         button.classList.add('loading');
@@ -219,7 +32,7 @@ function updateStatusClass(element, value) {
 }
 
 function hideLoadingOverlay() {
-    const overlay = document.getElementById('loading-overlay');
+    const overlay = $('loading-overlay');
     if (overlay) {
         overlay.style.opacity = '0';
         overlay.style.transition = 'opacity 0.3s ease';
@@ -229,18 +42,19 @@ function hideLoadingOverlay() {
     }
 }
 
-let globalAccPath = null;
+
+
+
 
 async function updateStatus() {
-    if (!globalAccPath && window.ACC && window.ACC.accPath) globalAccPath = window.ACC.accPath;
-    if (!globalAccPath) {
-        debugLog("ACC path not available for status update", 'ERROR');
+    if (!getAccPath()) {
+        printLogToFile("ACC path not available for status update", 'ERROR');
         return;
     }
 
     try {
-        const output = await commandExecutor.exec(globalAccPath, ['-i']);
-        debugLog(`Raw acc -i output:\n${output}`, 'DEBUG');
+        const output = await execAccAndLog(['-i']);
+        printLogToFile(`Raw acc -i output:\n${output}`, 'DEBUG');
 
         const lines = (output || '').split('\n').filter(line => line.trim());
         const status = {};
@@ -263,12 +77,12 @@ async function updateStatus() {
         // Update daemon status
         try {
             // Quick check without blocking too long
-            const running = await commandExecutor.exec('pgrep', ['-f', 'accd'], 3000);
-            document.getElementById('daemon-status').textContent = 'Running';
+            await checkAccd();
+            $('daemon-status').textContent = 'Running';
         } catch (e) {
-            document.getElementById('daemon-status').textContent = 'Stop';
+            $('daemon-status').textContent = 'Stop';
         }
-        updateStatusClass(document.getElementById('daemon-status'), document.getElementById('daemon-status').textContent);
+        updateStatusClass($('daemon-status'), $('daemon-status').textContent);
 
         // Battery level - extract from "level 75%" format or raw number
         let batteryLevel = '0';
@@ -278,170 +92,127 @@ async function updateStatus() {
             batteryLevel = status.capacity.toString().replace('%', '').replace(/[^0-9]/g, '');
         }
 
-        document.getElementById('battery-level').textContent = batteryLevel + '%';
-        const batteryBar = document.getElementById('battery-bar');
+        $('battery-level').textContent = batteryLevel + '%';
+        const batteryBar = $('battery-bar');
         if (batteryBar) {
             batteryBar.style.setProperty('--battery-level', batteryLevel + '%');
         }
 
         // Charging status
-        document.getElementById('charging-status').textContent = status.status || '-';
-        updateStatusClass(document.getElementById('charging-status'), document.getElementById('charging-status').textContent);
+        $('charging-status').textContent = status.status || '-';
+        updateStatusClass($('charging-status'), $('charging-status').textContent);
 
         // Current - handle "1.23A" format
         const currentNow = status.current_now || '-';
-        document.getElementById('current-limit').textContent = currentNow;
+        $('current-limit').textContent = currentNow;
 
         // Temperature - handle "28℃" format
-        const tempElement = document.getElementById('temperature');
+        const tempElement = $('temperature');
         if (tempElement) {
             tempElement.textContent = status.temp || '-';
         }
 
         // Power - handle "5.35W" format
-        const powerElement = document.getElementById('power-display');
+        const powerElement = $('power-display');
         if (powerElement) {
             powerElement.textContent = status.power_now || '-';
         }
 
         // Charge type (optional - only when power supply connected)
-        const chargeTypeElement = document.getElementById('charge-type');
+        const chargeTypeElement = $('charge-type');
         if (chargeTypeElement) {
             chargeTypeElement.textContent = status.charge_type || 'N/A';
         }
 
         // Real level (optional - only when capacity_mask enabled)
-        const realLevelElement = document.getElementById('real-level');
+        const realLevelElement = $('real-level');
         if (realLevelElement) {
             realLevelElement.textContent = status.real_level || 'N/A';
         }
 
 
 
-        hideError();
-        await logManager.info("Status refreshed");
+        hideNotification();
+        printLogToFile("Status refreshed", 'INFO');
     } catch (e) {
-        showError(`Status load failed: ${e}`, 'error');
-        document.getElementById('daemon-status').textContent = 'Stop';
-        updateStatusClass(document.getElementById('daemon-status'), 'Stop');
-        await logManager.error(`Status error: ${e}`);
+        showNotification(`Status load failed: ${e}`, 'error');
+        $('daemon-status').textContent = 'Stop';
+        updateStatusClass($('daemon-status'), 'Stop');
     }
 }
 
 async function verifySystem() {
-    console.log("Starting system verification...");
+    printLogToConsole("Starting system verification...", 'INFO');
+    // Attach to window for config.js to wrap
+    window.verifySystem = verifySystem;
 
     // Show loading state immediately
-    document.getElementById('root-status').textContent = 'Checking...';
-    document.getElementById('acc-install-status').textContent = 'Checking...';
+    $('root-status').textContent = 'Checking...';
+    $('acc-install-status').textContent = 'Checking...';
 
     try {
-        console.log("Checking root access...");
+        printLogToConsole("Checking root access...", 'INFO');
         //执行命令id，获取uid=0(root) gid=0(root) groups=0(root) context=u:r:magisk:s0
+        const idResult = await checkId();
+        printLogToConsole(`Root check result: ${idResult}`, 'INFO');
 
-        const idResult = await commandExecutor.exec('id');
-        console.log("Root check result:", idResult);
-
-        document.getElementById('root-status').textContent =
+        $('root-status').textContent =
             idResult.includes('uid=0') ? 'Root access OK' : 'Root access failed';
-        updateStatusClass(document.getElementById('root-status'), idResult);
+        updateStatusClass($('root-status'), idResult);
 
         if (!idResult.includes('uid=0')) {
             hideLoadingOverlay();
             throw new Error("Root access not granted");
         }
 
+        printLogToConsole("Root access OK, checking ACC installation...", 'INFO');
+        const accPath = getAccPath();
+        const version = getAccVersion();
+        $('acc-install-status').textContent = `Found at ${accPath}`;
+        $('acc-version').textContent = version;
+        updateStatusClass($('acc-install-status'), 'OK');
+        updateStatusClass($('acc-version'), version);
 
-        console.log("Root access OK, checking ACC installation...");
-        const ACC_PATHS = [
-            'acc',
-            '/data/adb/vr25/acc/acc',
-            '/dev/acc',
-            '/system/bin/acc',
-            '/data/adb/vr25/bin/acc'
-        ];
-        for (const path of ACC_PATHS) {
-            try {
-                console.log(`Trying ACC at ${path}...`);
-                const version = await commandExecutor.exec(path, ['-v']);
-                console.log(`ACC found at ${path}, version:`, version);
-                accPath = path;
-                document.getElementById('acc-install-status').textContent = `Found at ${path}`;
-                document.getElementById('acc-version').textContent = version.trim();
-                updateStatusClass(document.getElementById('acc-install-status'), 'OK');
-                updateStatusClass(document.getElementById('acc-version'), version);
+        $('control-panel').style.display = 'block';
+        $('config-panel').style.display = 'block';
+        $('log-panel').style.display = 'block';
+        $('maintenance-panel').style.display = 'block';
+        $('settings-panel').style.display = 'block';
 
-                document.getElementById('control-panel').style.display = 'block';
-                document.getElementById('config-panel').style.display = 'block';
-                document.getElementById('log-panel').style.display = 'block';
-                document.getElementById('maintenance-panel').style.display = 'block';
-                document.getElementById('settings-panel').style.display = 'block';
+        printLogToConsole("Initializing UI (non-blocking)...", 'INFO');
 
-                globalAccPath = accPath;
-                console.log("Initializing UI (non-blocking)...");
+        // Initialize UI without awaiting - let it load in background
+        initializeUI(path).catch(e => {
+            showNotification(`UI initialization error: ${e}`, 'ERROR');
+        });
 
-                // Initialize UI without awaiting - let it load in background
-                initializeUI(accPath).catch(e => {
-                    console.error("UI initialization error:", e);
-                    showError("Some features may not work properly. Try refreshing.", 'warn');
-                });
+        // Hide loading overlay after a short delay to ensure UI is visible
+        setTimeout(hideLoadingOverlay, 500);
 
-                // Hide loading overlay after a short delay to ensure UI is visible
-                setTimeout(hideLoadingOverlay, 500);
-
-                console.log("System verification completed successfully");
-                return;
-            } catch (e) {
-                console.log(`Not found at ${path}: ${e}`);
-            }
-        }
-
-        throw new Error("ACC binary not found");
+        printLogToConsole("System verification completed successfully", 'INFO');
+        return;
     } catch (e) {
-        console.error("System verification failed:", e);
-        showError(`System verification failed: ${e}`);
-        updateStatusClass(document.getElementById('root-status'), 'Failed');
-        updateStatusClass(document.getElementById('acc-install-status'), 'Failed');
+        showNotification(`System verification failed: ${e}`, 'ERROR');
+        updateStatusClass($('root-status'), 'Failed');
+        updateStatusClass($('acc-install-status'), 'Failed');
         hideLoadingOverlay();
-    }
-}
-/**
- * @deprecated 初始化过程中没必要保证accd开启，因为用户是可以手动关闭accd的
- */
-async function ensureAccdRunning(accPath) {
-    try {
-        // Quick check without blocking too long
-        const running = await commandExecutor.exec('pgrep', ['-f', 'accd'], 3000);
-        debugLog("accd daemon already running", 'INFO');
-    } catch (e) {
-        debugLog(`accd check/start: ${e}`, 'WARN');
-        //返回1表示未找到匹配进程
-        if (e.trim().endsWith(1)) {
-            debugLog("Starting accd daemon", 'INFO');
-            // Start daemon without waiting for full initialization
-            commandExecutor.exec(accPath, ['--init']).catch(e => {
-                debugLog(`accd start warning: ${e}`, 'WARN');
-            });
-            // Give it a moment to start
-            await new Promise(resolve => setTimeout(resolve, 500));
-        }
     }
 }
 
 async function loadLogs() {
     try {
-        const logs = await logManager.getRecentLogs(100);
-        document.getElementById('log-display').textContent = logs;
-        document.getElementById('log-display').scrollTop = document.getElementById('log-display').scrollHeight;
-        await logManager.info("Logs viewed");
+        const logs = await getRecentLogs(100);
+        $('log-display').textContent = logs;
+        $('log-display').scrollTop = $('log-display').scrollHeight;
+        printLogToFile("Logs viewed", 'INFO');
     } catch (e) {
-        document.getElementById('log-display').textContent = `Error loading logs: ${e}`;
-        await logManager.error(`Log load error: ${e}`);
+        $('log-display').textContent = `Error loading logs: ${e}`;
+        printLogToFile(`Log load error: ${e}`, 'ERROR');
     }
 }
 
 async function initializeUI(accPath) {
-    debugLog(`Initializing with ACC path: ${accPath}`, 'INFO');
+    printLogToFile(`Initializing with ACC path: ${accPath}`, 'INFO');
 
     ///不启用是因为用户是可以手动关闭accd的
     // Don't block UI initialization if daemon check fails
@@ -449,30 +220,30 @@ async function initializeUI(accPath) {
     //     showError("Daemon may not be running. Some features may not work. Try manually starting accd.", 'warn');
     // });
 
-    const batteryHealthBtn = document.getElementById('battery-health-btn');
-    const testSwitchesBtn = document.getElementById('test-switches-btn');
-    const disableChargingBtn = document.getElementById('disable-charging-btn');
-    const enableChargingBtn = document.getElementById('enable-charging-btn');
-    const forceChargeBtn = document.getElementById('force-charge-btn');
-    const resetBatteryStatsBtn = document.getElementById('reset-battery-stats-btn');
-    const refreshBtn = document.getElementById('refresh-btn');
-    const restartBtn = document.getElementById('restart-btn');
-    const stopBtn = document.getElementById('stop-btn');
-    const startBtn = document.getElementById('start-btn');
-    const refreshLogsBtn = document.getElementById('refresh-logs-btn');
-    const exportLogsBtn = document.getElementById('export-logs-btn');
-    const clearLogsBtn = document.getElementById('clear-logs-btn');
-    const upgradeBtn = document.getElementById('upgrade-btn');
-    const uninstallBtn = document.getElementById('uninstall-btn');
-    const rollbackBtn = document.getElementById('rollback-btn');
-    const versionBtn = document.getElementById('version-btn');
-    const detailedInfoBtn = document.getElementById('detailed-info-btn');
-    const readmeBtn = document.getElementById('readme-btn');
-    const logtailBtn = document.getElementById('logtail-btn');
+    const batteryHealthBtn = $('battery-health-btn');
+    const testSwitchesBtn = $('test-switches-btn');
+    const disableChargingBtn = $('disable-charging-btn');
+    const enableChargingBtn = $('enable-charging-btn');
+    const forceChargeBtn = $('force-charge-btn');
+    const resetBatteryStatsBtn = $('reset-battery-stats-btn');
+    const refreshBtn = $('refresh-btn');
+    const restartBtn = $('restart-btn');
+    const stopBtn = $('stop-btn');
+    const startBtn = $('start-btn');
+    const refreshLogsBtn = $('refresh-logs-btn');
+    const exportLogsBtn = $('export-logs-btn');
+    const clearLogsBtn = $('clear-logs-btn');
+    const upgradeBtn = $('upgrade-btn');
+    const uninstallBtn = $('uninstall-btn');
+    const rollbackBtn = $('rollback-btn');
+    const versionBtn = $('version-btn');
+    const detailedInfoBtn = $('detailed-info-btn');
+    const readmeBtn = $('readme-btn');
+    const logtailBtn = $('logtail-btn');
 
     async function loadConfig() {
         try {
-            const config = await commandExecutor.exec(accPath, ['-s']);
+            const config = await execAccAndLog(['-s']);
             const configLines = config.split('\n').filter(l => l.trim());
             const configMap = {};
 
@@ -487,16 +258,16 @@ async function initializeUI(accPath) {
             const resumeCharge = configMap.resume_capacity || '-';
             const pauseAt = `${chargeLimit}%`;
 
-            document.getElementById('charge-limit').textContent = chargeLimit + (chargeLimit !== '-' ? '%' : '');
-            document.getElementById('resume-charge').textContent = resumeCharge + (resumeCharge !== '-' ? '%' : '');
-            document.getElementById('pause-at').textContent = pauseAt;
+            $('charge-limit').textContent = chargeLimit + (chargeLimit !== '-' ? '%' : '');
+            $('resume-charge').textContent = resumeCharge + (resumeCharge !== '-' ? '%' : '');
+            $('pause-at').textContent = pauseAt;
 
-            await logManager.info("Config loaded");
+            printLogToFile("Config loaded", 'INFO');
         } catch (e) {
-            await logManager.error(`Config error: ${e}`);
+            printLogToFile(`Config error: ${e}`, 'ERROR');
         }
     }
-    
+
     batteryHealthBtn.addEventListener('click', async () => {
         try {
             setButtonLoading(batteryHealthBtn, true);
@@ -505,33 +276,32 @@ async function initializeUI(accPath) {
             if (mAh && mAh.trim()) {
                 args.push(mAh.trim());
             }
-            const health = await commandExecutor.exec(accPath, args);
+            const health = await execAccAndLog(args);
             const healthValue = health.trim();
             ///当没有输入数字时，其实没有自动检测，如果想检测可以到/sys/class/power_supply/*/charge_full_design，或者是/sys/class/power_supply/battery/uevent，找到POWER_SUPPLY_CHARGE_FULL_DESIGN 结果值/1000就是
             if (healthValue === '!') {
-                document.getElementById('battery-health').textContent = 'Unable to calculate (missing counter data)';
-                updateStatusClass(document.getElementById('battery-health'), 'Error');
-                showError("Battery health check failed: missing charge counter data", 'error');
+                $('battery-health').textContent = 'Unable to calculate (missing counter data)';
+                updateStatusClass($('battery-health'), 'Error');
+                showNotification("Battery health check failed: missing charge counter data", 'error');
             } else {
-                document.getElementById('battery-health').textContent = healthValue;
-                updateStatusClass(document.getElementById('battery-health'), 'OK');
-                showError("Battery health: " + healthValue, 'success');
+                $('battery-health').textContent = healthValue;
+                updateStatusClass($('battery-health'), 'OK');
+                showNotification("Battery health: " + healthValue, 'success');
             }
-            await logManager.info("Battery health checked");
+            printLogToFile("Battery health checked", 'INFO');
         } catch (e) {
-            showError(`Battery health check failed: ${e}`);
-            document.getElementById('battery-health').textContent = 'Error';
-            updateStatusClass(document.getElementById('battery-health'), 'Error');
-            await logManager.error(`Battery health error: ${e}`);
+            showNotification(`Battery health check failed: ${e}`);
+            $('battery-health').textContent = 'Error';
+            updateStatusClass($('battery-health'), 'Error');
         } finally {
             setButtonLoading(batteryHealthBtn, false);
         }
     });
 
     testSwitchesBtn.addEventListener('click', () => {
-        document.getElementById('test-switches-modal').style.display = 'block';
+        $('test-switches-modal').style.display = 'block';
         //todo 这种默认状态需要在停止测试后改回来
-        document.getElementById('test-switches-output').textContent = 'Click "Run Test" to start testing charging switches...\n\nThis may take several minutes. Ensure charger is plugged in.\n';
+        $('test-switches-output').textContent = 'Click "Run Test" to start testing charging switches...\n\nThis may take several minutes. Ensure charger is plugged in.\n';
     });
 
     /**
@@ -541,14 +311,12 @@ async function initializeUI(accPath) {
         const input = prompt("Disable charging until battery level reaches (% or mV) or for duration (e.g., 1h, 30m):", "70%");
         if (input && input.trim()) {
             try {
-                await commandExecutor.exec(accPath, ['-d', input.trim()]);
-                showError("Charging disabled until " + input.trim(), 'success');
-                setTimeout(hideError, 3000);
-                await logManager.info("Charging disabled until " + input.trim());
+                await execAccAndLog(['-d', input.trim()]);
+                showNotification("Charging disabled until " + input.trim(), 'success');
+                setTimeout(hideNotification, 3000);
                 await loadStatus();
             } catch (e) {
-                showError(`Disable charging failed: ${e}`);
-                await logManager.error(`Disable charging error: ${e}`);
+                showNotification(`Disable charging failed: ${e}`);
             }
         }
     });
@@ -560,14 +328,12 @@ async function initializeUI(accPath) {
         const input = prompt("Enable charging to battery level (%) or for duration (e.g., 30m):", "80%");
         if (input && input.trim()) {
             try {
-                await commandExecutor.exec(accPath, ['-e', input.trim()]);
-                showError("Charging enabled to " + input.trim(), 'success');
-                setTimeout(hideError, 3000);
-                await logManager.info("Charging enabled to " + input.trim());
+                await execAccAndLog(['-e', input.trim()]);
+                showNotification("Charging enabled to " + input.trim(), 'success');
+                setTimeout(hideNotification, 3000);
                 await loadStatus();
             } catch (e) {
-                showError(`Enable charging failed: ${e}`);
-                await logManager.error(`Enable charging error: ${e}`);
+                showNotification(`Enable charging failed: ${e}`);
             }
         }
     });
@@ -582,15 +348,13 @@ async function initializeUI(accPath) {
                 if (capacity && capacity.trim()) {
                     args.push(capacity.trim());
                 }
-                await commandExecutor.exec(accPath, args);
+                await execAccAndLog(args);
                 const target = capacity && capacity.trim() ? capacity.trim() : "100%";
-                showError("Force charging to " + target + " initiated", 'success');
-                setTimeout(hideError, 3000);
-                await logManager.info("Force charging to " + target);
+                showNotification("Force charging to " + target + " initiated", 'success');
+                setTimeout(hideNotification, 3000);
                 await loadStatus();
             } catch (e) {
-                showError(`Force charge failed: ${e}`);
-                await logManager.error(`Force charge error: ${e}`);
+                showNotification(`Force charge failed: ${e}`);
             }
         }
     });
@@ -600,18 +364,16 @@ async function initializeUI(accPath) {
     resetBatteryStatsBtn.addEventListener('click', async () => {
         if (confirm("Are you sure you want to reset battery statistics?")) {
             try {
-                const result = await commandExecutor.exec(accPath, ['-R']);
+                const result = await execAccAndLog(['-R']);
                 if (result.trim() === '✅') {
-                    showError("Battery statistics reset successfully", 'success');
+                    showNotification("Battery statistics reset successfully", 'success');
                 } else {
-                    showError("Battery statistics reset: " + result.trim(), 'success');
+                    showNotification("Battery statistics reset: " + result.trim(), 'success');
                 }
-                setTimeout(hideError, 3000);
-                await logManager.info("Battery statistics reset");
+                setTimeout(hideNotification, 3000);
                 await loadStatus();
             } catch (e) {
-                showError(`Reset battery stats failed: ${e}`);
-                await logManager.error(`Reset battery stats error: ${e}`);
+                showNotification(`Reset battery stats failed: ${e}`);
             }
         }
     });
@@ -619,13 +381,13 @@ async function initializeUI(accPath) {
     refreshBtn.addEventListener('click', async () => {
         try {
             setButtonLoading(refreshBtn, true);
-            await logManager.info("Manual refresh");
+            printLogToFile("Manual refresh", 'INFO');
             await loadStatus();
             await loadConfig();
-            showError("Status refreshed successfully!", 'success');
-            setTimeout(hideError, 2000);
+            showNotification("Status refreshed successfully!", 'success');
+            setTimeout(hideNotification, 2000);
         } catch (e) {
-            showError(`Refresh failed: ${e}`, 'error');
+            showNotification(`Refresh failed: ${e}`, 'error');
         } finally {
             setButtonLoading(refreshBtn, false);
         }
@@ -641,41 +403,32 @@ async function initializeUI(accPath) {
      */
     restartBtn.addEventListener('click', async () => {
         try {
-            await logManager.info("Restarting accd");
-            // await commandExecutor.exec('pkill', ['-f', 'accd']);
-            // await new Promise(resolve => setTimeout(resolve, 1000));
-            await commandExecutor.exec(accPath, ['-D', 'restart']);
-            showError("Restarting accd","info");
+            printLogToFile("Restarting accd", 'INFO');
+            await execAccAndLog(['-D', 'restart']);
+            showNotification("Restarting accd", "info");
             await loadStatus();
         } catch (e) {
-            showError(`Restart failed: ${e}`);
-            await logManager.error(`Restart error: ${e}`);
+            showNotification(`Restart failed: ${e}`);
         }
     });
 
     stopBtn.addEventListener('click', async () => {
         try {
-            await commandExecutor.exec(accPath, ['-D', 'stop']);
-            // await commandExecutor.exec('pkill', ['-f', 'accd']);
-            showError("accd stopped","info");
-            await logManager.info("accd stopped");
+            await execAccAndLog(['-D', 'stop']);
+            showNotification("accd stopped", "info");
             await loadStatus();
         } catch (e) {
-            showError(`Stop failed: ${e}`);
-            await logManager.error(`Stop error: ${e}`);
+            showNotification(`Stop failed: ${e}`);
         }
     });
 
     startBtn.addEventListener('click', async () => {
         try {
-            await commandExecutor.exec(accPath, ['-D', 'start']);
-            // await commandExecutor.exec(accPath, ['--init']);
-            showError("accd started","info");
-            await logManager.info("accd started");
+            await execAccAndLog(['-D', 'start']);
+            showNotification("accd started", "info");
             await loadStatus();
         } catch (e) {
-            showError(`Start failed: ${e}`);
-            await logManager.error(`Start error: ${e}`);
+            showNotification(`Start failed: ${e}`);
         }
     });
 
@@ -683,47 +436,43 @@ async function initializeUI(accPath) {
 
     exportLogsBtn.addEventListener('click', async () => {
         try {
-            await commandExecutor.exec(accPath, ['-le']);
-            showError("Logs exported to /sdcard/Download/acc-logs-*.tgz", 'success');
-            setTimeout(hideError, 3000);
-            await logManager.info("Logs exported");
+            await execAccAndLog(['-le']);
+            showNotification("Logs exported to /sdcard/Download/acc-logs-*.tgz", 'success');
+            setTimeout(hideNotification, 3000);
         } catch (e) {
-            showError(`Export logs failed: ${e}`);
-            await logManager.error(`Export logs error: ${e}`);
+            showNotification(`Export logs failed: ${e}`);
         }
     });
 
     clearLogsBtn.addEventListener('click', async () => {
         try {
-            const success = await logManager.clearLogs();
+            const success = await clearLogs();
             if (success) {
                 await loadLogs();
             } else {
-                showError("Clear logs failed");
+                showNotification("Clear logs failed");
             }
         } catch (e) {
-            showError(`Clear logs error: ${e}`);
+            showNotification(`Clear logs error: ${e}`);
         }
     });
 
     upgradeBtn.addEventListener('click', async () => {
         if (confirm("Check for ACC updates?")) {
             try {
-                const result = await commandExecutor.exec(accPath, ['-u', '-c', '-n']);
+                const result = await execAccAndLog(['-u', '-c', '-n']);
                 if (result.includes('Update available') || /^\d+$/.test(result.trim())) {
                     if (confirm("Update available. Install now?")) {
-                        await commandExecutor.exec(accPath, ['-u', '-f']);
-                        showError("ACC updated successfully. Please refresh the page.", 'success');
+                        await execAccAndLog(['-u', '-f']);
+                        showNotification("ACC updated successfully. Please refresh the page.", 'success');
                     }
                 } else if (result.includes('No update available')) {
-                    showError("ACC is up to date", 'info');
+                    showNotification("ACC is up to date", 'info');
                 } else {
-                    showError("Update check result: " + result.trim(), 'info');
+                    showNotification("Update check result: " + result.trim(), 'info');
                 }
-                await logManager.info("Checked for updates");
             } catch (e) {
-                showError(`Update check failed: ${e}`);
-                await logManager.error(`Update check error: ${e}`);
+                showNotification(`Update check failed: ${e}`);
             }
         }
     });
@@ -731,16 +480,14 @@ async function initializeUI(accPath) {
     uninstallBtn.addEventListener('click', async () => {
         if (confirm("Are you sure you want to uninstall ACC? This will remove all ACC files and configurations.")) {
             try {
-                const result = await commandExecutor.exec(accPath, ['-U']);
+                const result = await execAccAndLog(['-U']);
                 if (result.trim() === '✅') {
-                    showError("ACC uninstalled successfully", 'success');
+                    showNotification("ACC uninstalled successfully", 'success');
                 } else {
-                    showError("ACC uninstall: " + result.trim(), 'success');
+                    showNotification("ACC uninstall: " + result.trim(), 'success');
                 }
-                await logManager.info("ACC uninstalled");
             } catch (e) {
-                showError(`Uninstall failed: ${e}`);
-                await logManager.error(`Uninstall error: ${e}`);
+                showNotification(`Uninstall failed: ${e}`);
             }
         }
     });
@@ -752,12 +499,10 @@ async function initializeUI(accPath) {
             if (version && version.trim()) {
                 args.push(version.trim());
             }
-            const result = await commandExecutor.exec(accPath, args);
-            showError("Rollback completed: " + result.trim(), 'success');
-            await logManager.info("Rollback completed");
+            const result = await execAccAndLog(args);
+            showNotification("Rollback completed: " + result.trim(), 'success');
         } catch (e) {
-            showError(`Rollback failed: ${e}`);
-            await logManager.error(`Rollback error: ${e}`);
+            showNotification(`Rollback failed: ${e}`);
         }
     });
 
@@ -767,33 +512,30 @@ async function initializeUI(accPath) {
             versionBtn.disabled = true;
             versionBtn.textContent = 'Checking...';
 
-            const version = await commandExecutor.exec(accPath, ['-v']);
+            const version = await execAccAndLog(['-v']);
 
             versionBtn.disabled = false;
             versionBtn.textContent = 'Show Version';
 
-            showError("ACC Version: " + version.trim(), 'info');
-            await logManager.info("Version checked: " + version.trim());
+            showNotification("ACC Version: " + version.trim(), 'info');
         } catch (e) {
             versionBtn.disabled = false;
             versionBtn.textContent = 'Show Version';
-            showError(`Version check failed: ${e}`);
-            await logManager.error(`Version check error: ${e}`);
+            showNotification(`Version check failed: ${e}`);
         }
     });
 
     detailedInfoBtn.addEventListener('click', async () => {
-        const panel = document.getElementById('detailed-info-panel');
+        const panel = $('detailed-info-panel');
         if (panel.style.display === 'none' || !panel.style.display) {
             try {
-                const info = await commandExecutor.exec(accPath, ['-i']);
-                document.getElementById('detailed-info-content').textContent = info;
+                const info = await execAccAndLog(['-i']);
+                $('detailed-info-content').textContent = info;
                 panel.style.display = 'block';
                 detailedInfoBtn.textContent = 'Hide Detailed Info';
-                await logManager.info("Detailed battery info displayed");
+                printLogToFile("Detailed battery info displayed", 'INFO');
             } catch (e) {
-                showError(`Failed to get detailed info: ${e}`);
-                await logManager.error(`Detailed info error: ${e}`);
+                showNotification(`Failed to get detailed info: ${e}`);
             }
         } else {
             panel.style.display = 'none';
@@ -803,18 +545,17 @@ async function initializeUI(accPath) {
 
     readmeBtn.addEventListener('click', async () => {
         try {
-            const readme = await commandExecutor.exec('cat', ['/data/adb/vr25/acc/README.md']);
-            document.getElementById('readme-content').innerHTML = `<pre style="white-space: pre-wrap; font-family: monospace; font-size: 12px;">${readme.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`;
-            document.getElementById('readme-modal').style.display = 'block';
-            await logManager.info("README displayed");
+            const readme = await showReadme();
+            $('readme-content').innerHTML = `<pre style="white-space: pre-wrap; font-family: monospace; font-size: 12px;">${readme.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`;
+            $('readme-modal').style.display = 'block';
+            printLogToFile("README displayed", 'INFO');
         } catch (e) {
-            showError(`Failed to load README: ${e}`);
-            await logManager.error(`README load error: ${e}`);
+            showNotification(`Failed to load README: ${e}`);
         }
     });
 
-    document.getElementById('close-readme').addEventListener('click', () => {
-        document.getElementById('readme-modal').style.display = 'none';
+    $('close-readme').addEventListener('click', () => {
+        $('readme-modal').style.display = 'none';
     });
 
     logtailBtn.addEventListener('click', async () => {
@@ -824,7 +565,7 @@ async function initializeUI(accPath) {
             logtailBtn.textContent = 'Loading Logs...';
 
             // Get recent logs (non-blocking, no -f flag)
-            const logs = await commandExecutor.exec('sh', ['-c', 'tail -n 100 /data/adb/vr25/acc-data/logs/acc-*.log 2>/dev/null || echo "No logs found"']);
+            const logs = await showLogTail();
 
             // Display logs in a modal instead of freezing UI
             const modal = document.createElement('div');
@@ -852,16 +593,13 @@ async function initializeUI(accPath) {
 
             logtailBtn.disabled = false;
             logtailBtn.textContent = 'Log Monitor';
-            await logManager.info("Log monitor opened");
+            printLogToFile("Log monitor opened", 'INFO');
         } catch (e) {
             logtailBtn.disabled = false;
             logtailBtn.textContent = 'Log Monitor';
-            showError(`Failed to load logs: ${e}`);
-            await logManager.error(`Log monitor error: ${e}`);
+            showNotification(`Failed to load logs: ${e}`);
         }
     });
-
-    await logManager.ensureLogDirectory();
 
     // Load data asynchronously without blocking UI initialization
     // Use Promise.allSettled to load in parallel and continue even if some fail
@@ -873,23 +611,23 @@ async function initializeUI(accPath) {
         results.forEach((result, index) => {
             const names = ['Status', 'Config', 'Logs'];
             if (result.status === 'rejected') {
-                debugLog(`${names[index]} load failed: ${result.reason}`, 'WARN');
+                printLogToFile(`${names[index]} load failed: ${result.reason}`, 'WARN');
             }
         });
     });
 
-    document.getElementById('run-test-switches').addEventListener('click', async () => {
-        const outputElement = document.getElementById('test-switches-output');
-        const runBtn = document.getElementById('run-test-switches');
-        const stopBtn = document.getElementById('stop-test-switches');
+    $('run-test-switches').addEventListener('click', async () => {
+        const outputElement = $('test-switches-output');
+        const runBtn = $('run-test-switches');
+        const stopBtn = $('stop-test-switches');
 
         runBtn.style.display = 'none';
         stopBtn.style.display = 'inline-block';
         //todo 这种默认状态需要在停止测试后改回来
         outputElement.textContent = 'Starting switch test...\n\n⏳ This may take several minutes. Testing charging switches...\n\n';
 
-        let testTerminalId = null;
-        let checkInterval = null;
+        // let testTerminalId = null;
+        // let checkInterval = null;
 
         ///todo 有些不理解为什么要这么写
         // try {
@@ -908,7 +646,7 @@ async function initializeUI(accPath) {
         //     };
 
         //     // Execute with streaming output simulation
-        //     ksu.exec(`${globalAccPath || accPath} -t 2>&1`, callback);
+        //     ksu.execAndLog(`${globalAccPath || accPath} -t 2>&1`, callback);
 
         //     // Simulate progress updates since we can't get real-time streaming
         //     let dots = 0;
@@ -929,31 +667,31 @@ async function initializeUI(accPath) {
         //         msgIndex++;
         //     }, 3000);
 
-        //     await logManager.info("Charging switches test started");
+        //     await info("Charging switches test started");
         // } catch (e) {
         //     outputElement.textContent += `\n❌ Error: ${e}`;
-        //     await logManager.error(`Switch test error: ${e}`);
+        //     await error(`Switch test error: ${e}`);
         //     runBtn.style.display = 'inline-block';
         //     stopBtn.style.display = 'none';
         //     if (checkInterval) clearInterval(checkInterval);
         // }
     });
 
-    document.getElementById('stop-test-switches').addEventListener('click', () => {
-        const runBtn = document.getElementById('run-test-switches');
-        const stopBtn = document.getElementById('stop-test-switches');
+    $('stop-test-switches').addEventListener('click', () => {
+        const runBtn = $('run-test-switches');
+        const stopBtn = $('stop-test-switches');
         runBtn.style.display = '';
         stopBtn.style.display = 'none';
-        // document.getElementById('test-switches-modal').style.display = 'none';
-        showError("Test cancelled", 'info');
+        // $('test-switches-modal').style.display = 'none';
+        showNotification("Test cancelled", 'info');
     });
 
-    document.getElementById('close-test-switches').addEventListener('click', () => {
-        const runBtn = document.getElementById('run-test-switches');
-        const stopBtn = document.getElementById('stop-test-switches');
+    $('close-test-switches').addEventListener('click', () => {
+        const runBtn = $('run-test-switches');
+        const stopBtn = $('stop-test-switches');
         runBtn.style.display = '';
         stopBtn.style.display = 'none';
-        document.getElementById('test-switches-modal').style.display = 'none';
+        $('test-switches-modal').style.display = 'none';
     });
 
     // Close modals when clicking outside
@@ -962,7 +700,7 @@ async function initializeUI(accPath) {
             event.target.style.display = 'none';
         }
     });
-   //todo 和refrsh status按钮做个合并，实现手动和自动刷新保持一致
+    //todo 和refrsh status按钮做个合并，实现手动和自动刷新保持一致
     setInterval(loadStatus, 10000);
     setInterval(loadLogs, 30000);
 }
@@ -982,9 +720,9 @@ function initializeMainTabs() {
             document.querySelectorAll('.main-tab-pane').forEach(pane => pane.classList.remove('active'));
 
             this.classList.add('active');
-            document.getElementById(tabId).classList.add('active');
+            $(tabId).classList.add('active');
 
-            debugLog(`Switched to tab: ${tabId}`, 'INFO');
+            printLogToFile(`Switched to tab: ${tabId}`, 'INFO');
         });
     });
 }
@@ -995,8 +733,8 @@ async function loadStatus() {
 
 // Initialize debug mode from localStorage
 function initializeDebugMode() {
-    const debugConsoleCard = document.getElementById('debug-console-card');
-    const debugModeToggle = document.getElementById('debug-mode-toggle');
+    const debugConsoleCard = $('debug-console-card');
+    const debugModeToggle = $('debug-mode-toggle');
 
     // Load saved preference (default: disabled)
     const debugModeEnabled = localStorage.getItem('debugModeEnabled') === 'true';
@@ -1018,13 +756,13 @@ function initializeDebugMode() {
 
         if (isEnabled) {
             debugConsoleCard.classList.add('enabled');
-            showError('Debug console enabled - visible on all pages', 'info');
+            showNotification('Debug console enabled - visible on all pages', 'info');
         } else {
             debugConsoleCard.classList.remove('enabled');
-            showError('Debug console disabled', 'info');
+            showNotification('Debug console disabled', 'info');
         }
 
-        debugLog(`Debug mode ${isEnabled ? 'enabled' : 'disabled'}`, 'INFO');
+        printLogToFile(`Debug mode ${isEnabled ? 'enabled' : 'disabled'}`, 'INFO');
     });
 }
 
@@ -1032,27 +770,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         initializeMainTabs();
 
-        if (typeof ksu === 'undefined' || !ksu.exec) {
-            console.error("KernelSU API not available");
-            showError("KernelSU API not available. This webui requires KernelSU to function properly.");
+        if (!checkKSUEnvironment()) {
+            showNotification("KernelSU API not available.", 'ERROR');
+            return;
+        }
+        printLogToConsole("KernelSU API available, initializing...", 'INFO');
+
+
+        try {
+            await initLogDirectory();
+        } catch (e) {
+            printLogToConsole(`Logging initialization failed: ${e}`, 'WARN');
+        }
+        printLogToFile("WebView starting", 'INFO');
+
+
+        if (!initAccPath()) {
+            printLogToConsole("ACC binary not found");
             return;
         }
 
-        console.log("KernelSU API available, initializing...");
-
-        try {
-            await logManager.ensureLogDirectory();
-            await logManager.info("WebView starting");
-        } catch (logError) {
-            console.warn("Logging initialization failed:", logError);
-        }
 
         await verifySystem();
+
+        initializeConfigUI();
 
         // Initialize debug mode toggle
         initializeDebugMode();
     } catch (e) {
-        console.error("Initialization failed:", e);
-        showError("Initialization failed. Check console for details.");
+        showNotification(`Initialization failed: ${e}`, 'ERROR');
     }
 });
+
