@@ -1,0 +1,21 @@
+{
+  "name": "acc-webui-kernelsu",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
+  },
+  "dependencies": {
+    "kernelsu": "^3.0.2"
+  }
+}

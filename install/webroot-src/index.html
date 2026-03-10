@@ -9,6 +9,7 @@
 </head>
 
 <body>
+    <div id="error-display" class="error-box" style="display: none;"></div>
     <!-- Modern Loading overlay -->
     <div id="loading-overlay"
         style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); display: flex; align-items: center; justify-content: center; z-index: 9999; flex-direction: column;">
@@ -46,9 +47,6 @@
 
     <div class="container">
         <h1>⚡ ACC Daemon Controller</h1>
-
-        <div id="error-display" class="error-box" style="display: none;"></div>
-
         <div class="main-tab-content">
             <div id="status-tab" class="main-tab-pane active">
                 <div class="card">
@@ -137,10 +135,10 @@
                 </div>
             </div>
 
-            <div id="config-tab" class="main-tab-pane">
-                <div class="card" id="config-panel" style="display: none;">
-                    <h2>Configuration</h2>
-                    <div id="config-display">
+            <div id="profile-tab" class="main-tab-pane">
+                <div class="card" id="profile-panel" style="display: none;">
+                    <h2>Profile</h2>
+                    <div id="profile-display">
                         <div class="status-item">
                             <span class="status-key">Charge Limit:</span>
                             <span class="status-value" id="charge-limit">-</span>
@@ -156,36 +154,9 @@
                     </div>
                 </div>
             </div>
-
-            <div id="logs-tab" class="main-tab-pane">
-                <div class="card" id="log-panel" style="display: none;">
-                    <h2>Recent Logs</h2>
-                    <div class="log-container" id="log-display">Loading logs...</div>
-                    <div class="button-group">
-                        <button id="refresh-logs-btn">Refresh Logs</button>
-                        <button id="export-logs-btn">Export Logs</button>
-                        <button id="clear-logs-btn">Clear Logs</button>
-                    </div>
-                </div>
-            </div>
-
-            <div id="maintenance-tab" class="main-tab-pane">
-                <div class="card" id="maintenance-panel" style="display: none;">
-                    <h2>Maintenance</h2>
-                    <div class="button-group">
-                        <button id="upgrade-btn">Check for Updates</button>
-                        <button id="uninstall-btn">Uninstall ACC</button>
-                        <button id="rollback-btn">Rollback</button>
-                        <button id="version-btn">Show Version</button>
-                        <button id="readme-btn">Open Manual</button>
-                        <button id="logtail-btn">Log Monitor</button>
-                    </div>
-                </div>
-            </div>
-
             <div id="settings-tab" class="main-tab-pane">
                 <div class="card" id="settings-panel" style="display: none;">
-                    <h2>Configuration Settings</h2>
+                    <h2>Profile Settings</h2>
 
                     <div class="tab-buttons">
                         <button class="tab-button active" data-tab="basic-settings">Basic</button>
@@ -350,7 +321,7 @@
 
                     <div class="button-group">
                         <button id="load-config-btn">Load Current Config</button>
-                        <button id="save-config-btn">Save Configuration</button>
+                        <button id="save-config-btn">Save Config</button>
                         <button id="save-profile-btn">Save as Profile</button>
                         <button id="load-profile-btn">Load Profile</button>
                         <button id="reset-config-btn">Reset to Defaults</button>
@@ -358,6 +329,32 @@
                     </div>
                 </div>
             </div>
+            <div id="logs-tab" class="main-tab-pane">
+                <div class="card" id="log-panel" style="display: none;">
+                    <h2>Recent Logs</h2>
+                    <div class="log-container" id="log-display">Loading logs...</div>
+                    <div class="button-group">
+                        <button id="refresh-logs-btn">Refresh Logs</button>
+                        <button id="export-logs-btn">Export Logs</button>
+                        <button id="clear-logs-btn">Clear Logs</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="maintenance-tab" class="main-tab-pane">
+                <div class="card" id="maintenance-panel" style="display: none;">
+                    <h2>Maintenance</h2>
+                    <div class="button-group">
+                        <button id="upgrade-btn">Check for Updates</button>
+                        <button id="uninstall-btn">Uninstall ACC</button>
+                        <button id="rollback-btn">Rollback</button>
+                        <button id="version-btn">Show Version</button>
+                        <button id="readme-btn">Open Manual</button>
+                    </div>
+                </div>
+            </div>
+
+
         </div>
 
         <div class="bottom-nav">
@@ -365,22 +362,23 @@
                 <span class="nav-icon">📊</span>
                 <span class="nav-text">Status</span>
             </button>
-            <button class="nav-button" data-main-tab="config-tab">
+            <button class="nav-button" data-main-tab="profile-tab">
+                <span class="nav-icon">📄</span>
+                <span class="nav-text">Profile</span>
+            </button>
+            <button class="nav-button" data-main-tab="settings-tab">
                 <span class="nav-icon">⚙️</span>
-                <span class="nav-text">Config</span>
+                <span class="nav-text">Settings</span>
             </button>
             <button class="nav-button" data-main-tab="logs-tab">
                 <span class="nav-icon">📝</span>
                 <span class="nav-text">Logs</span>
             </button>
             <button class="nav-button" data-main-tab="maintenance-tab">
-                <span class="nav-icon">🔧</span>
+                <span class="nav-icon">🛠️</span>
                 <span class="nav-text">Maintenance</span>
             </button>
-            <button class="nav-button" data-main-tab="settings-tab">
-                <span class="nav-icon">🛠️</span>
-                <span class="nav-text">Settings</span>
-            </button>
+
         </div>
 
         <div class="card" id="debug-console-card">
@@ -421,8 +419,7 @@
             </div>
         </div>
     </div>
-    <script type="module" src="./script.js"></script>
-    <script type="module" src="./config.js"></script>
+    <script type="module" src="/components/script.ts"></script>
 </body>
 
 </html>

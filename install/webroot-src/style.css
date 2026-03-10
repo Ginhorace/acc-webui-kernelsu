@@ -475,11 +475,6 @@ button.loading::after {
     border-left-color: var(--info);
 }
 
-.error-box.success {
-    background: var(--good-bg);
-    border-left-color: var(--good);
-}
-
 .error-box.warn {
     background: var(--warning-bg);
     border-left-color: var(--warning);
@@ -490,7 +485,7 @@ button.loading::after {
     top: 16px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 1500;
+    z-index: 10001;
     width: calc(100% - 24px);
     max-width: 900px;
     margin: 0;
@@ -510,6 +505,23 @@ button.loading::after {
 #error-display.error-box.info { background: #ffffff; border-left-color: var(--info); }
 #error-display.error-box.success { background: #ffffff; border-left-color: var(--good); }
 #error-display.error-box.warn { background: #ffffff; border-left-color: var(--warning); }
+
+/* Floating error display animation - preserves centering */
+#error-display.error-box {
+    animation: slideInCenter 0.3s ease-out;
+}
+
+@keyframes slideInCenter {
+    from {
+        transform: translateX(-50%) translateY(-10px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(-50%) translateY(0);
+        opacity: 1;
+    }
+}
+
 @keyframes slideInRight {
     from {
         transform: translateX(-20px);
@@ -845,7 +857,7 @@ button.loading::after {
 }
 
 #settings-panel.loading::after {
-    content: "Loading configuration...";
+    content: "Loading Profile...";
     position: absolute;
     top: 50%;
     left: 50%;
