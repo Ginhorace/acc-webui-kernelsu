@@ -50,6 +50,9 @@
         <div class="main-tab-content">
             <div id="status-tab" class="main-tab-pane active">
                 <div class="card">
+                    <h2 id="current-profile-status"></h2>
+                </div>
+                <div class="card">
                     <h2>System Verification</h2>
                     <div id="verification-status">
                         <div class="status-item">
@@ -136,27 +139,17 @@
             </div>
 
             <div id="profile-tab" class="main-tab-pane">
-                <div id="profile-container" style="display: none;">
-                    <div class="card profile-panel" id="current-profile">
-                        <h2 id="profile-name"></h2>
-                        <div class="profile-display">
-                            <div class="status-item">
-                                <span class="status-key">Charge Limit:</span>
-                                <span class="status-value" id="charge-limit">-</span>
-                            </div>
-                            <div class="status-item">
-                                <span class="status-key">Resume Charge:</span>
-                                <span class="status-value" id="resume-charge">-</span>
-                            </div>
-                            <div class="status-item">
-                                <span class="status-key">Pause at:</span>
-                                <span class="status-value" id="pause-at">-</span>
-                            </div>
-                        </div>
-                    </div>
+                <div class="card">
+                    <h2 id = 'current-profile-profile'></h2>
+                </div>
+                <div id="profile-container">
+                    <!-- ProfileCard components will be dynamically inserted here -->
                 </div>
             </div>
             <div id="settings-tab" class="main-tab-pane">
+                <div class="card">
+                    <h2 id="current-profile-settings"></h2>
+                </div>
                 <div class="card" id="settings-panel" style="display: none;">
                     <h2>Profile Settings</h2>
 

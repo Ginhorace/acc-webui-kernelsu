@@ -1,11 +1,12 @@
 // Settings Tab - Profile settings management
-import * as logger from '../config/logger';
-import { $ } from './base';
+import * as logger from '@/env/logger';
+import { LogLevel } from '@/data/state';
+import { $ } from '@/components/base';
 logger.setConsoleListener((message, level) => {
     switch (level) {
-        case 'ERROR': console.error(message); break;
-        case 'WARN': console.warn(message); break;
-        case 'INFO': console.info(message); break;
+        case LogLevel.ERROR: console.error(message); break;
+        case LogLevel.WARN: console.warn(message); break;
+        case LogLevel.INFO: console.info(message); break;
         default: console.log(message);
     }
     // Debug console elements
@@ -31,10 +32,10 @@ function initializeDebugMode(): void {
     if (debugConsoleCard) {
         if (debugModeEnabled) {
             debugConsoleCard.classList.add('enabled');
-            logger.setLogLevel('DEBUG');
+            logger.setLogLevel(LogLevel.DEBUG);
         } else {
             debugConsoleCard.classList.remove('enabled');
-            logger.setLogLevel('INFO');
+            logger.setLogLevel(LogLevel.INFO);
         }
     }
 
@@ -52,11 +53,11 @@ function handleDebugModeChange(select: HTMLSelectElement, debugConsoleCard: HTML
         if (isEnabled) {
             debugConsoleCard.classList.add('enabled');
             logger.printToNotify('Debug console enabled - visible on all pages');
-            logger.setLogLevel('DEBUG');
+            logger.setLogLevel(LogLevel.DEBUG);
         } else {
             debugConsoleCard.classList.remove('enabled');
             logger.printToNotify('Debug console disabled');
-            logger.setLogLevel('INFO');
+            logger.setLogLevel(LogLevel.INFO);
         }
     }
 }

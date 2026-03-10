@@ -1,10 +1,14 @@
 // Status Tab - System status and battery information
-import * as logger from '../config/logger';
-import * as acc from '../commands/acc';
+import * as logger from '@/env/logger';
+import * as acc from '@/commands/acc';
+import * as acca from '@/commands/acca';
+import * as command from '@/commands/command';
 
-import { customPrompt } from './dialog';
-import { customConfirm } from './confirm';
-import { $, setOnClick, setButtonLoading, updateStatusClass, activateWithAbort, ButtonWithAbort } from './base';
+import { customPrompt } from '@/components/dialog';
+import { customConfirm } from '@/components/confirm';
+import { $, setOnClick, setButtonLoading, updateStatusClass, activateWithAbort, ButtonWithAbort, setProfilePanel, isForceCharging } from '@/components/base';
+import { getAccProfilePath, setAccProfilePath, LogLevel } from '@/data/state';
+import { defaultConfigPath } from '@/config/setting';
 
 // Cached DOM elements
 const elements = {
@@ -18,6 +22,8 @@ const elements = {
     chargeType: () => $('charge-type'),
     realLevel: () => $('real-level'),
 };
+
+let ProfilePanelName = "current-profile-status";
 /**
  * Safely update element text content
  */
@@ -47,30 +53,24 @@ function initializeStatusTab(): void {
     setOnClick('run-test-switches', handleRunTestSwitches);
     setOnClick('stop-test-switches', handleStopTestSwitches);
     setOnClick('close-test-switches', handleCloseTestSwitches);
-    updateStatus();
+
 }
 
 
 /**
  * 更新整个页面
  */
-async function updateStatus(): Promise<void> {
+async function refreshStatus(): Promise<void> {
     if (!acc.getAccPath()) {
-        logger.printToConsole('ACC path not available for status update', 'ERROR');
+        logger.printToConsole('ACC path not available for status update', LogLevel.ERROR);
         return;
     }
 
     try {
-        const result = await acc.showInfo();
-        if (result.errno !== 0) {
-            logger.printToConsole(`acc -i error:\n${result.stderr}`);
-            return;
-        }
+        await checkAccdProfile()
+
+        const result = await acca.showInfo();
         const status = parseBatteryInfo(result.stdout);
-
-        // Update daemon status
-        await updateDaemonStatus();
-
         // Update battery level
         updateBatteryLevel(status);
 
@@ -84,7 +84,7 @@ async function updateStatus(): Promise<void> {
 
         logger.printToConsole('Status refreshed');
     } catch (e) {
-        logger.printToNotify(`Status load failed: ${e}`, 'ERROR');
+        logger.printToNotify(`Status load failed: ${e}`, LogLevel.ERROR);
         const el = elements.daemonStatus();
         if (el) {
             el.textContent = 'Stop';
@@ -92,7 +92,20 @@ async function updateStatus(): Promise<void> {
         }
     }
 }
-
+async function checkAccdProfile() {
+    // Update daemon status
+    await updateDaemonStatus();
+    //todo 替换updateDaemonStatus，删除daemonStatus
+    const configResult = await command.checkAccdProfile();
+    if (configResult.errno === 0) {
+        let currentProfile = configResult.stdout ? defaultConfigPath : configResult.stdout;
+        setAccProfilePath(configResult.stdout);
+        setProfilePanel(ProfilePanelName, currentProfile);
+    }
+    else {
+        setAccProfilePath('is not running');
+    }
+}
 
 
 /**
@@ -160,7 +173,7 @@ function handleRefresh(button: ButtonWithAbort): void {
             btn.textContent = 'Refreshing';
             logger.printToNotify('Auto refresh started (10s interval)');
             const controller = new AbortController();
-            const intervalId = setInterval(updateStatus, 10000);
+            const intervalId = setInterval(refreshStatus, 10000);
             controller.signal.addEventListener('abort', () => {
                 clearInterval(intervalId);
                 btn.textContent = 'Refresh Status';
@@ -191,7 +204,7 @@ async function handleBatteryHealth(button: HTMLButtonElement): Promise<void> {
                 logger.printToNotify('Battery health: ' + healthValue);
             }
         })).catch((e => {
-            logger.printToNotify(`Battery health check failed: ${e}`, 'ERROR');
+            logger.printToNotify(`Battery health check failed: ${e}`, LogLevel.ERROR);
         })).finally(() => {
             setButtonLoading(button, false);
         });
@@ -218,12 +231,12 @@ async function handleDisableCharging(button: ButtonWithAbort): Promise<void> {
             logger.printToNotify(content);
             const abortController = acc.disableChargingSpawn(input, {
                 onStdout: (data) => logger.printToConsole(data),
-                onStderr: (data) => logger.printToConsole(data, 'ERROR'),
+                onStderr: (data) => logger.printToConsole(data, LogLevel.ERROR),
                 onExit: (code) => {
                     logger.printToConsole(`Disable charging exited with code: ${code}`);
                 },
                 onError: (err) => {
-                    logger.printToNotify(`Disable charging error: ${err}`, 'ERROR');
+                    logger.printToNotify(`Disable charging error: ${err}`, LogLevel.ERROR);
                 }
             });
             abortController.signal.addEventListener('abort', () => {
@@ -259,12 +272,12 @@ async function handleEnableCharging(button: ButtonWithAbort): Promise<void> {
             logger.printToNotify(content);
             const abortController = acc.enableChargingSpawn(input, {
                 onStdout: (data) => logger.printToConsole(data),
-                onStderr: (data) => logger.printToConsole(data, 'ERROR'),
+                onStderr: (data) => logger.printToConsole(data, LogLevel.ERROR),
                 onExit: (code) => {
                     logger.printToConsole(`Enable charging exited with code: ${code}`);
                 },
                 onError: (err) => {
-                    logger.printToNotify(`Enable charging error: ${err}`, 'ERROR');
+                    logger.printToNotify(`Enable charging error: ${err}`, LogLevel.ERROR);
                 }
             });
             abortController.signal.addEventListener('abort', () => {
@@ -308,8 +321,8 @@ async function handleForceCharge(button: ButtonWithAbort): Promise<void> {
                         if (enableCharging) enableCharging.style.visibility = 'visible';
                         logger.printToNotify('Force charge stopped');
                         //todo top accd then delete $TMPDIR/.acc-f-config
-                        acc.restartAccdSpawn({
-                            onExit: () => updateStatus()
+                        acca.restartAccdSpawn(defaultConfigPath, {
+                            onExit: () => refreshStatus()
                         });
                     }
                 });
@@ -325,20 +338,22 @@ async function handleForceCharge(button: ButtonWithAbort): Promise<void> {
 
 
 /**
- * Handle restart accd
+ * todo 可能会删除在profile界面启动
+ * Handle restart accd 
  */
 function handleRestart(button: ButtonWithAbort): void {
     setButtonLoading(button, true);
-    acc.restartAccdSpawn({
+    let currentProfile = getAccProfilePath();
+    acca.restartAccdSpawn(isForceCharging(currentProfile) ? '' : currentProfile, {
         onExit: (code) => {
             logger.printToConsole(`Restart accd exited with code: ${code}`);
             if (code === 0) {
                 logger.printToNotify('accd restarted successfully');
             } else {
-                logger.printToNotify(`accd restart failed with code: ${code}`, 'ERROR');
+                logger.printToNotify(`accd restart failed with code: ${code}`, LogLevel.ERROR);
             }
             setButtonLoading(button, false);
-            updateStatus();
+            refreshStatus();
         },
     });
 
@@ -349,16 +364,16 @@ function handleRestart(button: ButtonWithAbort): void {
  */
 function handleStop(button: HTMLButtonElement): void {
     setButtonLoading(button, true);
-    acc.stopAccdSpawn({
+    acca.stopAccdSpawn({
         onExit: (code) => {
             logger.printToConsole(`Stop accd exited with code: ${code}`);
             if (code === 0) {
                 logger.printToNotify('accd stopped successfully');
             } else {
-                logger.printToNotify(`accd stop failed with code: ${code}`, 'ERROR');
+                logger.printToNotify(`accd stop failed with code: ${code}`, LogLevel.ERROR);
             }
             setButtonLoading(button, false);
-            updateStatus();
+            refreshStatus();
         },
     });
 }
@@ -371,7 +386,7 @@ async function handleDetailedInfo(button: HTMLButtonElement): Promise<void> {
     const panel = $('detailed-info-panel');
     if (panel && (panel.style.display === 'none' || !panel.style.display)) {
         try {
-            const result = await acc.showInfo();
+            const result = await acca.showInfo();
             const info = result?.stdout || '';
             const content = $('detailed-info-content');
             if (content) content.textContent = info;
@@ -379,7 +394,7 @@ async function handleDetailedInfo(button: HTMLButtonElement): Promise<void> {
             button.textContent = 'Hide Detailed Info';
             logger.printToConsole('Detailed battery info displayed');
         } catch (e) {
-            logger.printToNotify(`Failed to get detailed info: ${e}`, 'ERROR');
+            logger.printToNotify(`Failed to get detailed info: ${e}`, LogLevel.ERROR);
         }
     } else if (panel) {
         panel.style.display = 'none';
@@ -400,9 +415,9 @@ async function handleResetBatteryStats(): Promise<void> {
             } else {
                 logger.printToNotify('Battery statistics reset: ' + resultStr.trim());
             }
-            await updateStatus();
+            await refreshStatus();
         } catch (e) {
-            logger.printToNotify(`Reset battery stats failed: ${e}`, 'ERROR');
+            logger.printToNotify(`Reset battery stats failed: ${e}`, LogLevel.ERROR);
         }
     }
 }
@@ -444,11 +459,11 @@ function handleRunTestSwitches(runBtn: HTMLButtonElement): void {
 
         testSwitchesAbortController = acc.testSwitch({
             onStdout: (data) => {
-                outputElement.textContent += data+'\n\n';
+                outputElement.textContent += data + '\n\n';
                 outputElement.scrollTop = outputElement.scrollHeight;
             },
             onStderr: (data) => {
-                outputElement.textContent += data+'\n\n';
+                outputElement.textContent += data + '\n\n';
                 outputElement.scrollTop = outputElement.scrollHeight;
             },
             onExit: (code) => {
@@ -489,4 +504,5 @@ function handleStopTestSwitches(stopBtn: HTMLButtonElement): void {
 
 export {
     initializeStatusTab,
+    refreshStatus,
 };

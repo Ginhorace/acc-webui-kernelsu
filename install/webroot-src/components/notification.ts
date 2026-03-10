@@ -1,5 +1,5 @@
-import { $ } from './base';
-import { setNotificationListener } from '../config/logger'
+import { $ } from '@/components/base';
+import { setNotificationListener } from '@/env/logger'
 
 setNotificationListener((message, level) => {
     const errorBox = $('error-display');

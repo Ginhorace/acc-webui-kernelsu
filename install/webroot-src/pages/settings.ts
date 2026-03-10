@@ -1,10 +1,12 @@
 // Settings Tab - Profile settings management
-import * as logger from '../config/logger';
-import { createProfileDir, saveProfileConfig, loadProfileConfig } from '../commands/command';
-import * as acc from '../commands/acc';
-import { customPrompt } from './dialog';
-import { customConfirm } from './confirm';
-import { $, setButtonLoading, setOnClick, parseConfig } from './base';
+import * as logger from '@/env/logger';
+import { createProfileDir, saveProfileConfig, loadProfileConfig } from '@/commands/command';
+import * as acc from '@/commands/acc';
+import * as acca from '@/commands/acca';
+import { customPrompt } from '@/components/dialog';
+import { customConfirm } from '@/components/confirm';
+import { $, setButtonLoading, setOnClick, parseConfig, setProfilePanel } from '@/components/base';
+import { getAccProfilePath, LogLevel } from '@/data/state';
 
 /**
  * Config field mapping between UI element and ACC config name
@@ -53,6 +55,8 @@ const CONFIG_MAPPINGS: ConfigMapping[] = [
     { elementName: 'apply-on-boot', configName: 'apply_on_boot' },
     { elementName: 'apply-on-plug', configName: 'apply_on_plug' },
 ];
+
+let ProfilePanelName = "current-profile-settings";
 /**
  * Get input/select element value
  * @param id
@@ -96,36 +100,41 @@ function buildConfigCommands(): string[] {
     e.g., acc -s l
  */
 
-    /**
-     *  todo -s|--set p|--print [egrep regex (default: ".")]   Print current config without blank lines (refer to previous examples)
+/**
+ *  todo -s|--set p|--print [egrep regex (default: ".")]   Print current config without blank lines (refer to previous examples)
 
-      -sp [egrep regex (default: ".")]   Same as above
-     */
+  -sp [egrep regex (default: ".")]   Same as above
+ */
 /**
  * Initialize settings tab event listeners
  */
 function initializeSettingsTab(): void {
-    const panelClassList = ($('settings-panel') as HTMLDivElement).classList;
-
-    // Load config and switches on init
-    panelClassList.add('loading');
-    Promise.all([
-        loadChargingSwitches(),
-        loadCurrentConfig()
-    ]).finally(() => {
-        panelClassList.remove('loading');
-    });
     //todo 可以通过-c|--config h string打印帮助?
     setOnClick('load-config-btn', handleLoadConfig);
     setOnClick('save-config-btn', handleSaveConfig);
     setOnClick('reset-config-btn', handleResetConfig);
     setOnClick('save-profile-btn', handleSaveProfile);
     setOnClick('load-profile-btn', handleLoadProfile);
-
     // Tab switching within settings
     document.querySelectorAll('.tab-button').forEach((button: Element) => {
         button.addEventListener('click', handleTabButtonClick);
     });
+}
+
+
+async function updateSettings(): Promise<void> {
+    //todo 要解决forcecharging与其他profile在本页面的冲突。
+    setButtonLoading($('settings-panel') as HTMLDivElement,true);
+    try{
+    await loadChargingSwitches();
+    await loadCurrentConfig();
+    }
+    catch(e){
+        logger.printToNotify(`refresh failed:${e}`,LogLevel.ERROR);
+    }
+    finally{
+          setButtonLoading($('settings-panel') as HTMLDivElement,false);
+    }
 }
 
 // Handle settings tab button click
@@ -147,7 +156,11 @@ function handleTabButtonClick(e: Event): void {
  */
 async function loadCurrentConfig(): Promise<void> {
     try {
-        const configResult = await acc.printConfig();
+        let currentProfile = getAccProfilePath();
+        if (currentProfile) {
+            setProfilePanel(ProfilePanelName, currentProfile);
+        }
+        const configResult = await acca.printConfig();
         const config = configResult?.stdout || '';
         const configMap = parseConfig(config);
 
@@ -161,7 +174,7 @@ async function loadCurrentConfig(): Promise<void> {
 
         logger.printToConsole('Profile loaded into UI');
     } catch (e) {
-        logger.printToNotify(`Failed to load Profile: ${e}`, 'ERROR');
+        logger.printToNotify(`Failed to load Profile: ${e}`, LogLevel.ERROR);
     }
 }
 
@@ -189,10 +202,9 @@ async function loadChargingSwitches(): Promise<void> {
             }
         });
     } catch (e) {
-        logger.printToConsole(`Failed to load charging switches: ${e}`, 'ERROR');
+        logger.printToConsole(`Failed to load charging switches: ${e}`, LogLevel.ERROR);
     }
 }
-
 
 
 
@@ -222,10 +234,10 @@ async function handleSaveConfig(): Promise<void> {
                 const commands = buildConfigCommands();
                 // Execute all commands
                 for (const cmd of commands) {
-                    await acc.setConfig(cmd);
+                    await acca.setConfig(cmd);
                 }
                 logger.printToNotify('Profile saved successfully!');
-                acc.restartAccdSpawn({});
+                acca.restartAccdSpawn({});
             }
             catch (e) {
                 logger.printToConsole(`${e}`);
@@ -248,12 +260,12 @@ async function handleResetConfig(): Promise<void> {
         setButtonLoading(panel, true);
         setTimeout(async () => {
             try {
-                await acc.resetConfig();
+                await acca.resetConfig();
                 await loadCurrentConfig();
                 logger.printToNotify('Profile reset to defaults!');
 
             } catch (e) {
-                logger.printToNotify(`Failed to reset Profile: ${e}`, 'ERROR');
+                logger.printToNotify(`Failed to reset Profile: ${e}`, LogLevel.ERROR);
             }
             finally {
                 setButtonLoading(panel, false);
@@ -276,7 +288,7 @@ async function handleSaveProfile(button: HTMLButtonElement): Promise<void> {
                 await saveProfileConfig(profileName.trim(), config);
                 logger.printToNotify(`Profile "${profileName}" saved successfully!`);
             } catch (e) {
-                logger.printToNotify(`Failed to save profile: ${e}`, 'ERROR');
+                logger.printToNotify(`Failed to save profile: ${e}`, LogLevel.ERROR);
             } finally {
                 setButtonLoading(button, false);
             }
@@ -306,12 +318,12 @@ async function handleLoadProfile(button: HTMLButtonElement): Promise<void> {
                     }
                     logger.printToNotify(`Profile "${profileName}" loaded successfully!`);
                 }
-                else{
-                    logger.printToNotify(`Failed to load profile: ${profileResult.stderr}`, 'ERROR');
+                else {
+                    logger.printToNotify(`Failed to load profile: ${profileResult.stderr}`, LogLevel.ERROR);
                 }
 
             } catch (e) {
-                logger.printToNotify(`Failed to load profile: ${e}`, 'ERROR');
+                logger.printToNotify(`Failed to load profile: ${e}`, LogLevel.ERROR);
             } finally {
                 setButtonLoading(button, false);
             }
@@ -319,4 +331,4 @@ async function handleLoadProfile(button: HTMLButtonElement): Promise<void> {
     }
 }
 
-export { initializeSettingsTab };
+export { initializeSettingsTab,updateSettings };

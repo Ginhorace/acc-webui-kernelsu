@@ -1,17 +1,18 @@
-import { checkKSUEnvironment } from '../env/ksu';
-import * as logger from '../config/logger';
-import { checkId } from '../commands/command';
-import * as acc from '../commands/acc';
+import { checkKSUEnvironment } from '@/env/ksu';
+import * as logger from '@/env/logger';
+import { checkId } from '@/commands/command';
+import * as acc from '@/commands/acc';
+import { LogLevel } from '@/data/state';
 
-import { $, updateStatusClass } from './base';
+import { $, updateStatusClass } from '@/components/base';
 // Import tab modules
-import { initializeStatusTab } from './status';
-import { initializeLogsTab } from './logs';
-import { initializeMaintenanceTab } from './maintenance';
-import { initializeSettingsTab } from './settings';
-import { initializeDebugMode } from './console';
-import { loadConfigDisplay } from './profile';
-import './notification'; // side effect: register notification listener
+import { initializeStatusTab, refreshStatus } from '@/pages/status';
+import { initializeLogsTab } from '@/pages/logs';
+import { initializeMaintenanceTab } from '@/pages/maintenance';
+import { initializeSettingsTab } from '@/pages/settings';
+import { initializeDebugMode } from '@/components/console';
+import { initializeProfileTab } from '@/pages/profile';
+import '@/components/notification'; // side effect: register notification listener
 
 /**
  * Verify system requirements
@@ -67,18 +68,19 @@ async function verifySystem(): Promise<void> {
 
         logger.printToConsole('Initializing UI (non-blocking)...');
 
-        initializeUI(accPath).then(()=>{
+        initializeUI(accPath).then(() => {
+
+            logger.printToConsole('System verification completed successfully');
             hideLoadingOverlay();
         }).catch((e: Error) => {
-            logger.printToNotify(`UI initialization error: ${e}`, 'ERROR');
+            logger.printToNotify(`UI initialization error: ${e}`, LogLevel.ERROR);
         });
 
-        // setTimeout(hideLoadingOverlay, 500);
 
         logger.printToConsole('System verification completed successfully');
         return;
     } catch (e) {
-        logger.printToNotify(`System verification failed: ${e}`, 'ERROR');
+        logger.printToNotify(`System verification failed: ${e}`, LogLevel.ERROR);
         updateStatusClass($('root-status'), false);
         updateStatusClass($('acc-install-status'), false);
         hideLoadingOverlay();
@@ -92,13 +94,17 @@ async function verifySystem(): Promise<void> {
 async function initializeUI(accPath: string): Promise<void> {
     logger.printToFile(`Initializing with ACC path: ${accPath}`);
     //todo 需要把页面初始化和加载数据区分开
+
+    initializeMainTabs();
+    // Initialize debug mode toggle
+    initializeDebugMode();
     // Initialize all tab modules
     initializeStatusTab();
     initializeLogsTab();
     initializeMaintenanceTab();
     initializeSettingsTab();
-
-
+    initializeProfileTab();
+    refreshStatus();
     // Close modals when clicking outside
     window.addEventListener('click', handleModalClick);
 }
@@ -134,12 +140,9 @@ function handleNavButtonClick(e: Event): void {
     if (tabId) {
         const tab = $(tabId);
         if (tab) tab.classList.add('active');
-        //自定义逻辑
-        if (tabId == "profile-tab") {
-            loadConfigDisplay();
-        }
+        //todo 数据将会在点击后重新加载
     }
-    logger.printToConsole(`Switched to tab: ${tabId}`, 'DEBUG');
+    logger.printToConsole(`Switched to tab: ${tabId}`, LogLevel.DEBUG);
 }
 /**
  * Hide loading overlay
@@ -159,25 +162,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
 
         if (!checkKSUEnvironment()) {
-            logger.printToNotify('KernelSU API not available.', 'ERROR');
+            logger.printToNotify('KernelSU API not available.', LogLevel.ERROR);
             return;
         }
-        const initLogResult=await logger.initLogDirectory()
-        if (initLogResult.errno!==0) {
-            logger.printToNotify(`Logging initialization failed`, 'ERROR');
+        const initLogResult = await logger.initLogDirectory()
+        if (initLogResult.errno !== 0) {
+            logger.printToNotify(`Logging initialization failed`, LogLevel.ERROR);
             return;
         }
         if (!acc.initAccPath()) {
-            logger.printToNotify('ACC binary not found', 'ERROR');
+            logger.printToNotify('ACC binary not found', LogLevel.ERROR);
             return;
         }
         logger.printToFile('WebView starting');
 
-        initializeMainTabs();
         await verifySystem();
-        // Initialize debug mode toggle
-        initializeDebugMode();
+
     } catch (e) {
-        logger.printToNotify(`Initialization failed: ${e}`, 'ERROR');
+        logger.printToNotify(`Initialization failed: ${e}`, LogLevel.ERROR);
     }
 });

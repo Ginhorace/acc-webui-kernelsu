@@ -1,5 +1,7 @@
 // Base utilities - Common DOM and UI helper functions
 
+import { tmpDir } from "@/config/setting";
+
 /**
  * Get element by ID
  * @param id Element ID
@@ -98,6 +100,11 @@ function parseConfig(config: string): Record<string, string> {
 
     return configMap;
 }
-
-export { $, setOnClick, activateWithAbort, setButtonLoading, updateStatusClass, parseConfig }
+function setProfilePanel(panelName: string, path: string) {
+    ($(panelName) as HTMLDivElement).textContent = 'active:' + isForceCharging(path) ? 'force charging' : path;
+}
+function isForceCharging(path: string) {
+    return path.includes(tmpDir + '/.acc-f-config')
+}
+export { $, setOnClick, activateWithAbort, setButtonLoading, updateStatusClass, setProfilePanel, parseConfig, isForceCharging }
 export type { ButtonWithAbort };

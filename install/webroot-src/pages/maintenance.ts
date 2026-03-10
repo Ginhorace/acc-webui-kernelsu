@@ -1,11 +1,12 @@
 // Maintenance Tab - ACC maintenance operations
-import * as logger from '../config/logger';
-import * as acc from '../commands/acc';
-import { showReadme } from '../commands/command';
+import * as logger from '@/env/logger';
+import * as acc from '@/commands/acc';
+import { showReadme } from '@/commands/command';
+import { LogLevel } from '@/data/state';
 
-import { customPrompt } from './dialog';
-import { customConfirm } from './confirm';
-import { $, setOnClick, setButtonLoading } from './base';
+import { customPrompt } from '@/components/dialog';
+import { customConfirm } from '@/components/confirm';
+import { $, setOnClick, setButtonLoading } from '@/components/base';
 
 function initializeMaintenanceTab(): void {
     setOnClick('upgrade-btn', handleUpgrade);
@@ -53,13 +54,13 @@ async function handleUninstall(button: HTMLButtonElement): Promise<void> {
         setButtonLoading(button, true);
         acc.uninstallSpawn({
             onStdout: (data) => logger.printToConsole(data),
-            onStderr: (data) => logger.printToConsole(data, 'ERROR'),
+            onStderr: (data) => logger.printToConsole(data, LogLevel.ERROR),
             onExit: (code) => {
                 setButtonLoading(button, false);
                 if (code === 0) {
                     logger.printToNotify('ACC uninstalled successfully');
                 } else {
-                    logger.printToNotify(`ACC uninstall failed with code: ${code}`, 'ERROR');
+                    logger.printToNotify(`ACC uninstall failed with code: ${code}`, LogLevel.ERROR);
                 }
             },
         });
@@ -75,7 +76,7 @@ async function handleRollback(): Promise<void> {
         const result = await acc.rollback(version ?? undefined);
         logger.printToNotify('Rollback completed: ' + (result?.stdout || '').trim());
     } catch (e) {
-        logger.printToNotify(`Rollback failed: ${e}`, 'ERROR');
+        logger.printToNotify(`Rollback failed: ${e}`, LogLevel.ERROR);
     }
 }
 
@@ -92,7 +93,7 @@ async function handleReadme(): Promise<void> {
         ($('readme-modal') as HTMLElement).style.display = 'block';
         logger.printToConsole('README displayed');
     } catch (e) {
-        logger.printToNotify(`Failed to load README: ${e}`, 'ERROR');
+        logger.printToNotify(`Failed to load README: ${e}`, LogLevel.ERROR);
     }
 }
 

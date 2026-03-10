@@ -130,6 +130,25 @@ h2::before {
     opacity: 0.7;
 }
 
+/* Active profile card - highlighted current config */
+.profile-panel.active-profile {
+    border: 2px solid var(--good);
+    box-shadow: var(--shadow-lg), 0 0 20px rgba(16, 185, 129, 0.25);
+}
+
+.profile-panel.active-profile::before {
+    opacity: 1;
+    height: 3px;
+}
+
+.profile-panel.active-profile h2 {
+    color: var(--good);
+}
+
+.profile-panel {
+    cursor: pointer;
+}
+
 .status-item {
     display: flex;
     justify-content: space-between;
@@ -206,7 +225,7 @@ button {
     white-space: nowrap;
 }
 
-button::before {
+/* button::before {
     content: '';
     position: absolute;
     top: 50%;
@@ -229,7 +248,7 @@ button:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-md);
     border-color: rgba(0, 0, 0, 0.15);
-}
+} */
 
 button:active {
     transform: translateY(0);

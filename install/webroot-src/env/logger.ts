@@ -1,20 +1,10 @@
-import { buildCommand, exec, ExecResults, spawn, SpawnOptions } from '../env/ksu';
+import { buildCommand, exec as ksuExec, ExecResults, spawn as keuSpawn, SpawnOptions } from '@/env/ksu';
+import { logDir, logFile } from '@/config/setting';
+import { getLogLevel, setLogLevel, LogLevel } from '@/data/state';
 // Logger module extracted from script.ts
 // Provides logging functions for use across the WebUI
 
-// 配置
-export const config = {
-    binDir: '/data/adb/vr25/bin',
-    execDir: '/data/adb/vr25/acc',
-    dataDir: '/data/adb/vr25/acc-data',
-    logDir: '/data/adb/vr25/acc-data/logs',
-    logFile: '/data/adb/vr25/acc-data/logs/webview-acc.log',
-    logLevel: 'INFO' as LogLevel
-};
-
-type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
-
-const logLevels: LogLevel[] = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
+const logLevels: LogLevel[] = [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR];
 
 type printLog = (message: string, logLevel: LogLevel) => void;
 
@@ -26,12 +16,12 @@ var consoleListener: printLog = (message) => { console.error(message) };
  * @returns 
  */
 async function initLogDirectory(): Promise<ExecResults> {
-    return exec(`mkdir -p "${config.logDir}" && chmod 755 "${config.logDir}"`);
+    return ksuExec(`mkdir -p "${logDir}" && chmod 755 "${logDir}"`);
 
 }
 
 async function clearLogs(): Promise<ExecResults> {
-    return exec(`: > "${config.logFile}"`);
+    return ksuExec(`: > "${logFile}"`);
 }
 
 
@@ -47,7 +37,7 @@ function setConsoleListener(printLog: printLog) {
  * @param message
  * @param type
  */
-function printToNotify(message: string, level: LogLevel = 'INFO'): void {
+function printToNotify(message: string, level: LogLevel = LogLevel.INFO): void {
     if (notificationListener) {
         notificationListener(message, level);
     }
@@ -58,7 +48,7 @@ function printToNotify(message: string, level: LogLevel = 'INFO'): void {
  * @param message
  * @param level
  */
-function printToConsole(message: string, level: LogLevel = 'INFO'): void {
+function printToConsole(message: string, level: LogLevel = LogLevel.INFO): void {
     if (consoleListener && shouldLog(level)) {
         consoleListener(message, level);
     }
@@ -69,16 +59,16 @@ function printToConsole(message: string, level: LogLevel = 'INFO'): void {
  * @param message 
  * @param level 
  */
-async function printToFile(message: string, level: LogLevel = 'INFO'): Promise<boolean> {
+async function printToFile(message: string, level: LogLevel = LogLevel.INFO): Promise<boolean> {
     if (!shouldLog(level)) {
         return false;
     }
     const timestamp = new Date().toISOString();
     const logEntry = `[${timestamp}] [${level}] ${message}`;
     const escapedEntry = logEntry.replace(/'/g, "'\\''");
-    const result = await exec(`printf '%s\\n' '${escapedEntry}' >> "${config.logFile}"`);
+    const result = await ksuExec(`printf '%s\\n' '${escapedEntry}' >> "${logFile}"`);
     if (result.errno !== 0) {
-        consoleListener(`Failed to write log: ${result.stderr}`, "ERROR");
+        consoleListener(`Failed to write log: ${result.stderr}`, LogLevel.ERROR);
         return false;
     }
     return true;
@@ -90,19 +80,19 @@ async function printToFile(message: string, level: LogLevel = 'INFO'): Promise<b
  * @param args 参数数组
  * @returns 完整的执行结果，包含 errno、stdout、stderr
  */
-async function execAndLog(command: string, args: string[] = []): Promise<ExecResults> {
+async function exec(command: string, args: string[] = []): Promise<ExecResults> {
     const fullCmd = buildCommand(command, args);
-    printToConsole(`[exec] ${fullCmd}`, 'DEBUG');
-    return await exec(fullCmd);
+    printToConsole(`[exec] ${fullCmd}`, LogLevel.DEBUG);
+    return await ksuExec(fullCmd);
 }
-function spawnAndLog(
+function spawn(
     command: string,
     args: string[] = [],
     options: SpawnOptions = {}
 ): AbortController {
     const fullCmd = buildCommand(command, args);
-    printToConsole(`[exec] ${fullCmd}`, 'DEBUG');
-    return spawn(command, args, options);
+    printToConsole(`[exec] ${fullCmd}`, LogLevel.DEBUG);
+    return keuSpawn(command, args, options);
 }
 /**
  * 根据日志等级控制是否打印
@@ -110,13 +100,10 @@ function spawnAndLog(
  * @returns 
  */
 function shouldLog(level: LogLevel): boolean {
-    const currentLevel = logLevels.indexOf(config.logLevel);
+    const currentLevel = logLevels.indexOf(getLogLevel());
     const targetLevel = logLevels.indexOf(level);
     if (targetLevel === -1) return false;
     return targetLevel >= currentLevel;
-}
-function setLogLevel(level: LogLevel) {
-    config.logLevel = level;
 }
 
 export {
@@ -128,8 +115,6 @@ export {
     printToConsole,
     printToFile,
     clearLogs,
-    execAndLog,
-    spawnAndLog
+    exec,
+    spawn
 };
-
-export type { LogLevel };

@@ -1,8 +1,9 @@
 // Logs Tab - Log viewing and management
-import * as logger from '../config/logger';
-import * as acc from '../commands/acc';
+import * as logger from '@/env/logger';
+import * as acc from '@/commands/acc';
+import { LogLevel } from '@/data/state';
 
-import { setOnClick, setButtonLoading } from './base';
+import { setOnClick, setButtonLoading } from '@/components/base';
 
 /**
  * Handle export logs button click
@@ -25,14 +26,13 @@ async function handleClearLogs(): Promise<void> {
     //todo loading
     const result = await logger.clearLogs();
     if (result.errno === 0) {
-        logger.printToNotify('Clear logs', 'INFO');
+        logger.printToNotify('Clear logs', LogLevel.INFO);
     }
     else {
-        logger.printToNotify(`Clear logs failed: ${result.stderr}`, 'ERROR');
+        logger.printToNotify(`Clear logs failed: ${result.stderr}`, LogLevel.ERROR);
     }
 
 }
-//todo 界面上添加自动刷新logs的选项
 
 /**
  * Initialize logs tab event listeners
