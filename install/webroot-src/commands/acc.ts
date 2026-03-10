@@ -1,11 +1,14 @@
-import { execAndLog, printToFile } from '../config/logger';
+import { execAndLog,ExecResults, runSpawn } from '../env/ksu';
+import { printToConsole, config } from '../config/logger';
+
+const { binDir, execDir } = config;
 
 const ACC_PATHS: string[] = [
     'acc',
-    '/data/adb/vr25/acc/acc',
+    `${execDir}/acc`,
     '/dev/acc',
     '/system/bin/acc',
-    '/data/adb/vr25/bin/acc'
+    `${binDir}/acc`
 ];
 
 let globalAccPath: string = '';
@@ -37,13 +40,15 @@ async function initAccPath(): Promise<boolean> {
     }
     for (const path of ACC_PATHS) {
         try {
-            const version = await execAndLog(path, ['-v']);
-            printToFile(`ACC found at ${path}, version: ${version}`);
-            globalAccPath = path;
-            globalAccVersion = version.trim();
-            return true;
+            const result = await execAndLog(path, ['-v']);
+            if (result.errno === 0) {
+                printToConsole(`ACC found at ${path}, version: ${result.stdout}`);
+                globalAccPath = path;
+                globalAccVersion = result.stdout.trim();
+                return true;
+            }
         } catch (e) {
-            printToFile(`Not found at ${path}: ${e}`, 'ERROR');
+            printToConsole(`Not found at ${path}: ${e}`, 'ERROR');
         }
     }
     return false;
@@ -52,29 +57,27 @@ async function initAccPath(): Promise<boolean> {
 /**
  * 执行acc相关指令
  * @param args 
- * @param timeout 
  * @returns 
  */
-async function execAccAndLog(args: string[] = [], timeout: number = 10000): Promise<string | undefined> {
-    if (!globalAccPath) return;
-    return execAndLog(globalAccPath, args, timeout);
+async function execAccAndLog(args: string[] = []): Promise<ExecResults> {
+    if (!globalAccPath) {
+        return { errno: -1, stdout: '', stderr: 'ACC path not initialized' };
+    }
+    return execAndLog(globalAccPath, args);
 }
 
-async function testSwitch(): Promise<void> {
-    execAccAndLog(['-t', '2>&1']);
-}
 
 /**
  * -i|--info [case insensitive egrep regex (default: ".")]   Show battery info
  */
-async function showInfo(): Promise<string | undefined> {
+async function showInfo(): Promise<ExecResults> {
     return execAccAndLog(['-i']);
 }
 
 /**
  * -s|--set   Print current config
  */
-async function printConfig(): Promise<string | undefined> {
+async function printConfig(): Promise<ExecResults> {
     return execAccAndLog(['-s']);
 }
 
@@ -82,7 +85,7 @@ async function printConfig(): Promise<string | undefined> {
  * -H|--health <mAh>   Print estimated battery health
  * @param capacity 单位mAh
  */
-async function printHealth(capacity: string | undefined): Promise<string | undefined> {
+async function printHealth(capacity: string | undefined): Promise<ExecResults> {
     return execAccAndLog(['-H', capacity?.trim() || '']);
 }
 
@@ -93,9 +96,19 @@ async function printHealth(capacity: string | undefined): Promise<string | undef
  *    acc -d 1h (do not recharge until 1 hour has passed)
  *    acc -d 4000mv (do not recharge until battery voltage <= 4000mV)
  * @param input #%, #s, #m, #h or #mv
+ * @param options 选项（包含回调）
+ * @returns AbortController 用于取消进程
  */
-async function disableCharging(input: string = ''): Promise<void> {
-    execAccAndLog(['-d', input.trim()]);
+function disableChargingSpawn(
+    input: string,
+    options: {
+        onStdout?: (data: string) => void;
+        onStderr?: (data: string) => void;
+        onExit?: (code: number) => void;
+        onError?: (err: any) => void;
+    } = {}
+): AbortController {
+    return runSpawn(globalAccPath, ['-d', input.trim()], options);
 }
 
 /**
@@ -104,10 +117,20 @@ async function disableCharging(input: string = ''): Promise<void> {
  *    acc -e 75% (recharge to 75%)
  *    acc -e 30m (recharge for 30 minutes)
  *    acc -e 4000mv (recharge to 4000mV)
- * @param input 
+ * @param input #%, #s, #m, #h or #mv
+ * @param options 选项（包含回调）
+ * @returns AbortController 用于取消进程
  */
-async function enableCharging(input: string = ''): Promise<void> {
-    execAccAndLog(['-e', input.trim()]);
+function enableChargingSpawn(
+    input: string,
+    options: {
+        onStdout?: (data: string) => void;
+        onStderr?: (data: string) => void;
+        onExit?: (code: number) => void;
+        onError?: (err: any) => void;
+    } = {}
+): AbortController {
+    return runSpawn(globalAccPath, ['-e', input.trim()], options);
 }
 
 /**
@@ -119,8 +142,8 @@ async function enableCharging(input: string = ''): Promise<void> {
  *    acc -f 90 -a (the -a (auto) tries to restart accd automatically shortly after the charger is unplugged; not supported by all devices)
  * @param input 
  */
-async function forceCharging(input: string = ''): Promise<void> {
-    execAccAndLog(['-f', input.trim()]);
+async function forceCharging(input: string = ''): Promise<ExecResults> {
+    return execAccAndLog(['-f', input.trim()]);
 }
 
 /**
@@ -128,7 +151,7 @@ async function forceCharging(input: string = ''): Promise<void> {
  *    e.g., acc -R
  * @returns 
  */
-async function resetStats(): Promise<string | undefined> {
+async function resetStats(): Promise<ExecResults> {
     return execAccAndLog(['-R']);
 }
 
@@ -140,22 +163,22 @@ async function resetStats(): Promise<string | undefined> {
  *    accd -D stop (alias: "accd.")
  * @returns 
  */
-async function restartAccd(): Promise<string | undefined> {
+async function restartAccd(): Promise<ExecResults> {
     return execAccAndLog(['-D', 'restart']);
 }
 
-async function startAccd(): Promise<string | undefined> {
+async function startAccd(): Promise<ExecResults> {
     return execAccAndLog(['-D', 'start']);
 }
 
-async function stopAccd(): Promise<string | undefined> {
+async function stopAccd(): Promise<ExecResults> {
     return execAccAndLog(['-D', 'stop']);
 }
 
 /**
  * @returns "accd version is running (PID pid)" or "accd is not running"
  */
-async function checkAccd(): Promise<string | undefined> {
+async function checkAccd(): Promise<ExecResults> {
     return execAccAndLog(['-D']);
 }
 
@@ -165,7 +188,7 @@ async function checkAccd(): Promise<string | undefined> {
  *
  *  -le   Same as -l -e
  */
-async function exportLogs(): Promise<string | undefined> {
+async function exportLogs(): Promise<ExecResults> {
     return execAccAndLog(['-le']);
 }
 
@@ -180,7 +203,7 @@ async function exportLogs(): Promise<string | undefined> {
  *      acc -u -c -n (if update is available, prints version code (integer) and changelog)
  *      acc -u -c (same as above, but with install prompt)
  */
-async function printVersionCode(): Promise<string | undefined> {
+async function printVersionCode(): Promise<ExecResults> {
     return execAccAndLog(['-u', '-c', '-n']);
 }
 
@@ -195,7 +218,7 @@ async function printVersionCode(): Promise<string | undefined> {
  *      acc -u -c -n (if update is available, prints version code (integer) and changelog)
  *      acc -u -c (same as above, but with install prompt)
  */
-async function upgrade(): Promise<string | undefined> {
+async function upgrade(): Promise<ExecResults> {
     return execAccAndLog(['-u', '-f']);
 }
 
@@ -204,7 +227,7 @@ async function upgrade(): Promise<string | undefined> {
  *    e.g., acc -U
  * @returns 
  */
-async function uninstall(): Promise<string | undefined> {
+async function uninstall(): Promise<ExecResults> {
     return execAccAndLog(['-U']);
 }
 
@@ -212,7 +235,7 @@ async function uninstall(): Promise<string | undefined> {
  * -b|--rollback [nv]   Restore previous installation; with "n" flag, the config is not restored; with "v" flag, nothing is done other than printing the version that would have been restored
  * @param input 
  */
-async function rollback(input: string | undefined): Promise<string | undefined> {
+async function rollback(input: string | undefined): Promise<ExecResults> {
     return execAccAndLog(['-b', input?.trim() || '']);
 }
 
@@ -221,7 +244,7 @@ async function rollback(input: string | undefined): Promise<string | undefined> 
  *    e.g., acc -v
  * @returns 
  */
-async function version(): Promise<string | undefined> {
+async function version(): Promise<ExecResults> {
     return execAccAndLog(['-v']);
 }
 
@@ -232,7 +255,7 @@ async function version(): Promise<string | undefined> {
  *  -ss:   Same as above
  * @returns 
  */
-async function loadingSwitch(): Promise<string | undefined> {
+async function loadingSwitch(): Promise<ExecResults> {
     return execAccAndLog(['-s', 's:']);
 }
 
@@ -245,7 +268,7 @@ async function loadingSwitch(): Promise<string | undefined> {
  *    Note: all properties have short aliases for faster typing; run "acc -c cat" to see them
  * @param input 
  */
-async function setConfig(input: string): Promise<string | undefined> {
+async function setConfig(input: string): Promise<ExecResults> {
     return execAccAndLog(['-s', input.trim()]);
 }
 
@@ -256,8 +279,27 @@ async function setConfig(input: string): Promise<string | undefined> {
  *
  *  -sr [a]   Same as above
  */
-async function resetConfig(): Promise<void> {
-    execAccAndLog(['-sr']);
+async function resetConfig(): Promise<ExecResults> {
+    return execAccAndLog(['-sr']);
+}
+
+/**
+ *   -t|--test [ctrl file(s)]   Test charging switches
+ *    e.g.,
+ *      acc -t (automatic)
+ *      acc -t /sys/class/power_supply/battery/charging_enabled
+ * @param options 选项（包含回调）
+ * @returns AbortController 用于取消进程
+ */
+function testSwitch(
+    options: {
+        onStdout?: (data: string) => void;
+        onStderr?: (data: string) => void;
+        onExit?: (code: number) => void;
+        onError?: (err: any) => void;
+    } = {}
+): AbortController {
+    return runSpawn(globalAccPath, ['-t'], options);
 }
 
 export {
@@ -265,12 +307,11 @@ export {
     getAccPath,
     getAccVersion,
     initAccPath,
-    testSwitch,
     showInfo,
     printConfig,
     printHealth,
-    disableCharging,
-    enableCharging,
+    disableChargingSpawn,
+    enableChargingSpawn,
     forceCharging,
     resetStats,
     restartAccd,
@@ -285,5 +326,6 @@ export {
     version,
     loadingSwitch,
     setConfig,
-    resetConfig
+    resetConfig,
+    testSwitch
 };

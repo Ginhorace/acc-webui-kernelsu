@@ -1,6 +1,6 @@
 // Settings Tab - Profile settings management
 import * as logger from '../config/logger';
-import { createProfileDir } from '../commands/command';
+import { createProfileDir, saveProfileConfig, loadProfileConfig } from '../commands/command';
 import * as acc from '../commands/acc';
 import { printToNotify } from '../config/logger';
 import { printToConsole } from '../config/logger';
@@ -28,7 +28,6 @@ function initializeSettingsTab(): void {
     setOnClick('reset-config-btn', handleResetConfig);
     setOnClick('save-profile-btn', handleSaveProfile);
     setOnClick('load-profile-btn', handleLoadProfile);
-    setOnClick('test-functionality-btn', handleTestFunctionality);
 
     // Tab switching within settings
     document.querySelectorAll('.tab-button').forEach((button: Element) => {
@@ -66,14 +65,15 @@ function getVal(id: string): string {
  */
 async function loadCurrentConfig(): Promise<void> {
     try {
-        const config = await acc.printConfig() || '';
+        const configResult = await acc.printConfig();
+        const config = configResult?.stdout || '';
         const configLines = config.split('\n').filter((line: string) => line.trim());
 
         const configMap: Record<string, string> = {};
         configLines.forEach((line: string) => {
             const match = line.match(/^([^=]+)=(.*)$/);
             if (match) {
-                configMap[match[1].trim()] = match[2].replaceAll('"','').trim();
+                configMap[match[1].trim()] = match[2].replaceAll('"', '').trim();
             }
         });
 
@@ -109,7 +109,7 @@ async function loadCurrentConfig(): Promise<void> {
 
         logger.printToConsole('Profile loaded into UI');
     } catch (e) {
-        printToNotify(`Failed to load Profile: ${e}`,'ERROR');
+        printToNotify(`Failed to load Profile: ${e}`, 'ERROR');
     }
 }
 
@@ -118,7 +118,8 @@ async function loadCurrentConfig(): Promise<void> {
  */
 async function loadChargingSwitches(): Promise<void> {
     try {
-        const switches = await acc.loadingSwitch() || '';
+        const switchesResult = await acc.loadingSwitch();
+        const switches = switchesResult?.stdout || '';
         const switchSelect = $('charging-switch') as HTMLSelectElement | null;
         if (!switchSelect) return;
 
@@ -224,10 +225,10 @@ async function saveConfig(): Promise<void> {
         try {
             await acc.restartAccd();
         } catch (e) {
-            printToConsole(`Could not restart accd: ${e}`,'ERROR');
+            printToConsole(`Could not restart accd: ${e}`, 'ERROR');
         }
     } catch (e) {
-        printToNotify(`Failed to save Profile: ${e}`,'ERROR');
+        printToNotify(`Failed to save Profile: ${e}`, 'ERROR');
     }
 }
 
@@ -243,10 +244,10 @@ async function resetConfig(): Promise<void> {
         try {
             await acc.restartAccd();
         } catch (e) {
-            printToConsole(`Could not restart accd: ${e}`,'ERROR');
+            printToConsole(`Could not restart accd: ${e}`, 'ERROR');
         }
     } catch (e) {
-        printToNotify(`Failed to reset Profile: ${e}`,'ERROR');
+        printToNotify(`Failed to reset Profile: ${e}`, 'ERROR');
     }
 }
 
@@ -295,11 +296,12 @@ async function handleSaveProfile(): Promise<void> {
     if (profileName && profileName.trim()) {
         try {
             await createProfileDir();
-            const config = await acc.printConfig() || '';
-            await logger.execAndLog('sh', ['-c', `echo '${config.replace(/'/g, "'\\''")}' > /data/adb/vr25/acc-data/profiles/${profileName.trim()}.conf`]);
+            const configResult = await acc.printConfig();
+            const config = configResult?.stdout || '';
+            await saveProfileConfig(profileName.trim(), config);
             printToNotify(`Profile "${profileName}" saved successfully!`);
         } catch (e) {
-            printToNotify(`Failed to save profile: ${e}`,'ERROR');
+            printToNotify(`Failed to save profile: ${e}`, 'ERROR');
         }
     }
 }
@@ -311,7 +313,8 @@ async function handleLoadProfile(): Promise<void> {
     const profileName = await customPrompt('Enter profile name to load:');
     if (profileName && profileName.trim()) {
         try {
-            const profileConfig = await logger.execAndLog('cat', [`/data/adb/vr25/acc-data/profiles/${profileName.trim()}.conf`]);
+            const profileResult = await loadProfileConfig(profileName.trim());
+            const profileConfig = profileResult?.stdout || '';
             const lines = profileConfig.split('\n').filter((l: string) => l.trim() && l.includes('='));
 
             for (const line of lines) {
@@ -327,35 +330,9 @@ async function handleLoadProfile(): Promise<void> {
                 printToConsole(`Could not restart accd: ${e}`, 'ERROR');
             }
         } catch (e) {
-            printToNotify(`Failed to load profile: ${e}`,'ERROR');
+            printToNotify(`Failed to load profile: ${e}`, 'ERROR');
         }
     }
 }
 
-/**
- * Handle test functionality button click
- */
-async function handleTestFunctionality(): Promise<void> {
-    if (!await customConfirm('This will test ACC functionality by toggling charging on/off. Continue?')) return;
-
-    printToNotify('Testing ACC functionality...');
-    try {
-        await acc.disableCharging();
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        const status1 = await acc.showInfo() || '';
-
-        await acc.enableCharging();
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        await acc.showInfo();
-
-        if (status1.includes('Discharging') || status1.includes('Not charging')) {
-            printToNotify('✅ ACC functionality test passed!');
-        } else {
-            printToNotify('⚠️ ACC test completed but results inconclusive. Check logs.');
-        }
-    } catch (e) {
-        printToNotify(`Functionality test failed: ${e}`,'ERROR');
-    }
-}
-
-export { initializeSettingsTab};
+export { initializeSettingsTab };

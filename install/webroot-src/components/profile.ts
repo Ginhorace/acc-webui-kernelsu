@@ -8,7 +8,8 @@ import { $ } from './base';
  */
 async function loadConfigDisplay(): Promise<void> {
     try {
-        const config = await acc.printConfig() || '';
+        const result = await acc.printConfig();
+        const config = result?.stdout || '';
         const configLines = config.split('\n').filter((l: string) => l.trim());
         const configMap: Record<string, string> = {};
 

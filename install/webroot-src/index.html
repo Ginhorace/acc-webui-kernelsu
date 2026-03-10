@@ -121,16 +121,16 @@
                     </div>
 
                     <div class="button-group">
-                        <button id="refresh-btn">Refresh Status</button>
-                        <button id="battery-health-btn">Battery Health</button>
-                        <button id="test-switches-btn">Test Switches</button>
-                        <button id="disable-charging-btn">Disable Charging</button>
-                        <button id="enable-charging-btn">Enable Charging</button>
-                        <button id="force-charge-btn">Force Charge</button>
-                        <button id="reset-battery-stats-btn">Reset Battery Stats</button>
-                        <button id="restart-btn">Restart Daemon</button>
-                        <button id="stop-btn">Stop Daemon</button>
-                        <button id="start-btn">Start Daemon</button>
+                        <button class="success-button" id="refresh-btn">Refresh Status</button>
+                        <button class="success-button" id="battery-health-btn">Battery Health</button>
+                        <button class="primary-button" id="disable-charging-btn">Disable Charging</button>
+                        <button class="primary-button" id="enable-charging-btn">Enable Charging</button>
+                        <button class="success-button" id="restart-btn">Start/Restart Daemon</button>
+                        <button class="success-button" id="stop-btn">Stop Daemon</button>
+                        <button class="primary-button" id="force-charge-btn">Force Charge</button>
+                        <button class="warn-button" id="test-switches-btn">Test Switches</button>
+                        <button class="warn-button" id="reset-battery-stats-btn">Reset Battery Stats</button>
+
                     </div>
                 </div>
             </div>
@@ -163,7 +163,6 @@
                         <button class="tab-button" data-tab="limits-settings">Limits</button>
                         <button class="tab-button" data-tab="advanced-settings">Advanced</button>
                         <button class="tab-button" data-tab="cooldown-settings">Cooldown</button>
-                        <button class="tab-button" data-tab="ui-settings">UI</button>
                     </div>
 
                     <div class="tab-content">
@@ -303,40 +302,33 @@
                                 <input type="number" id="cooldown-pause" min="0" step="1">
                             </div>
                         </div>
-
-                        <div id="ui-settings" class="tab-pane">
-                            <div class="config-item">
-                                <label for="debug-mode-toggle">Enable Debug Console:</label>
-                                <select id="debug-mode-toggle">
-                                    <option value="false">Disabled</option>
-                                    <option value="true">Enabled</option>
-                                </select>
-                                <small
-                                    style="display: block; margin-top: 8px; color: var(--text-secondary); font-size: 12px;">
-                                    Show debug console on all pages for troubleshooting
-                                </small>
-                            </div>
-                        </div>
                     </div>
-
                     <div class="button-group">
-                        <button id="load-config-btn">Load Current Config</button>
-                        <button id="save-config-btn">Save Config</button>
-                        <button id="save-profile-btn">Save as Profile</button>
-                        <button id="load-profile-btn">Load Profile</button>
-                        <button id="reset-config-btn">Reset to Defaults</button>
-                        <button id="test-functionality-btn">Test All Features</button>
+                        <button class="primary-button" id="load-config-btn">Refresh Config</button>
+                        <button class="primary-button" id="save-config-btn">Save Config</button>
+                        <button class="success-button" id="save-profile-btn">Save as Profile</button>
+                        <button class="success-button" id="load-profile-btn">Load Profile</button>
+                        <button class="danger-button" id="reset-config-btn">Reset to Defaults</button>
                     </div>
                 </div>
             </div>
             <div id="logs-tab" class="main-tab-pane">
                 <div class="card" id="log-panel" style="display: none;">
                     <h2>Recent Logs</h2>
-                    <div class="log-container" id="log-display">Loading logs...</div>
                     <div class="button-group">
-                        <button id="refresh-logs-btn">Refresh Logs</button>
-                        <button id="export-logs-btn">Export Logs</button>
+                        <button class="primary-button" id="export-logs-btn">Export Logs</button>
                         <button id="clear-logs-btn">Clear Logs</button>
+                        <div class="config-item">
+                            <label for="debug-mode-toggle">Enable Debug Console:</label>
+                            <select id="debug-mode-toggle">
+                                <option value="false">Disabled</option>
+                                <option value="true">Enabled</option>
+                            </select>
+                            <small
+                                style="display: block; margin-top: 8px; color: var(--text-secondary); font-size: 12px;">
+                                Show debug console on all pages for troubleshooting
+                            </small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -344,12 +336,13 @@
             <div id="maintenance-tab" class="main-tab-pane">
                 <div class="card" id="maintenance-panel" style="display: none;">
                     <h2>Maintenance</h2>
+                    <!-- todo 添加多语言选项 -->
                     <div class="button-group">
-                        <button id="upgrade-btn">Check for Updates</button>
-                        <button id="uninstall-btn">Uninstall ACC</button>
-                        <button id="rollback-btn">Rollback</button>
-                        <button id="version-btn">Show Version</button>
-                        <button id="readme-btn">Open Manual</button>
+                        <button class="warn-button" id="upgrade-btn">Check for Updates</button>
+                        <button class="danger-button" id="uninstall-btn">Uninstall ACC</button>
+                        <button class="danger-button" id="rollback-btn">Rollback</button>
+                        <button class="success-button" id="version-btn">Show Version</button>
+                        <button class="success-button" id="readme-btn">Open Manual</button>
                     </div>
                 </div>
             </div>

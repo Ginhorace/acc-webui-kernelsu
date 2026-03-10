@@ -2,26 +2,9 @@
 import * as logger from '../config/logger';
 import * as acc from '../commands/acc';
 import { printToNotify } from '../config/logger';
-import { $, setOnClick } from './base';
+import { setOnClick } from './base';
 
-/**
- * Load logs into display
- */
-async function loadLogs(): Promise<void> {
-    try {
-        const logs = await logger.getRecentLogs(100);
-        const logDisplay = $('log-display');
-        if (logDisplay) {
-            logDisplay.textContent = logs;
-            logDisplay.scrollTop = logDisplay.scrollHeight;
-        }
-        logger.printToConsole('Logs viewed');
-    } catch (e) {
-        const logDisplay = $('log-display');
-        if (logDisplay) logDisplay.textContent = `Error loading logs: ${e}`;
-        logger.printToConsole(`Log load error: ${e}`, 'ERROR');
-    }
-}
+
 
 /**
  * Handle export logs button click
@@ -41,9 +24,7 @@ async function handleExportLogs(): Promise<void> {
 async function handleClearLogs(): Promise<void> {
     try {
         const success = await logger.clearLogs();
-        if (success) {
-            await loadLogs();
-        } else {
+        if (!success){
             printToNotify('Clear logs failed','ERROR');
         }
     } catch (e) {
@@ -56,7 +37,6 @@ async function handleClearLogs(): Promise<void> {
  * Initialize logs tab event listeners
  */
 function initializeLogsTab(): void {
-    setOnClick('refresh-logs-btn', loadLogs);
     setOnClick('export-logs-btn', handleExportLogs);
     setOnClick('clear-logs-btn', handleClearLogs);
 }

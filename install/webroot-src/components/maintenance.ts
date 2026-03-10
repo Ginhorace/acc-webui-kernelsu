@@ -39,7 +39,7 @@ async function handleUpgrade(): Promise<void> {
                 printToNotify('Update check result: ' + result.trim());
             }
         } catch (e) {
-            printToNotify(`Update check failed: ${e}`,'ERROR');
+            printToNotify(`Update check failed: ${e}`, 'ERROR');
         }
     }
 }
@@ -50,14 +50,15 @@ async function handleUpgrade(): Promise<void> {
 async function handleUninstall(): Promise<void> {
     if (await customConfirm('Are you sure you want to uninstall ACC? This will remove all ACC files and Profiles.')) {
         try {
-            const result = await acc.uninstall() || '';
-            if (result.trim() === '✅') {
+            const result = await acc.uninstall();
+            const resultStr = result?.stdout || '';
+            if (resultStr.trim() === '✅') {
                 printToNotify('ACC uninstalled successfully');
             } else {
-                printToNotify('ACC uninstall: ' + result.trim());
+                printToNotify('ACC uninstall: ' + resultStr.trim());
             }
         } catch (e) {
-            printToNotify(`Uninstall failed: ${e}`,'ERROR');
+            printToNotify(`Uninstall failed: ${e}`, 'ERROR');
         }
     }
 }
@@ -68,32 +69,32 @@ async function handleUninstall(): Promise<void> {
 async function handleRollback(): Promise<void> {
     const version = await customPrompt('Enter version to rollback to (leave empty for previous):');
     try {
-        const result = await acc.rollback(version ?? undefined) || '';
-        printToNotify('Rollback completed: ' + result.trim());
+        const result = await acc.rollback(version ?? undefined);
+        printToNotify('Rollback completed: ' + (result?.stdout || '').trim());
     } catch (e) {
-        printToNotify(`Rollback failed: ${e}`,'ERROR');
+        printToNotify(`Rollback failed: ${e}`, 'ERROR');
     }
 }
 
 /**
  * Handle version button click
  */
-async function handleVersion(): Promise<void> {
-    const versionBtn = $('version-btn') as HTMLButtonElement | null;
+async function handleVersion(button: HTMLButtonElement): Promise<void> {
     try {
-        if (versionBtn) versionBtn.disabled = true;
-        if (versionBtn) versionBtn.textContent = 'Checking...';
+        button.disabled = true;
+        button.textContent = 'Checking...';
 
-        const accVersion = await acc.version() || '';
+        const result = await acc.version();
+        const accVersion = result?.stdout || '';
 
-        if (versionBtn) versionBtn.disabled = false;
-        if (versionBtn) versionBtn.textContent = 'Show Version';
+        button.disabled = false;
+        button.textContent = 'Show Version';
 
         printToNotify('ACC Version: ' + accVersion.trim());
     } catch (e) {
-        if (versionBtn) versionBtn.disabled = false;
-        if (versionBtn) versionBtn.textContent = 'Show Version';
-        printToNotify(`Version check failed: ${e}`,'ERROR');
+        button.disabled = false;
+        button.textContent = 'Show Version';
+        printToNotify(`Version check failed: ${e}`, 'ERROR');
     }
 }
 
@@ -102,12 +103,13 @@ async function handleVersion(): Promise<void> {
  */
 async function handleReadme(): Promise<void> {
     try {
-        const readme = await showReadme() || '';
+        const result = await showReadme();
+        const readme = result?.stdout || '';
         ($('readme-content') as HTMLElement).innerHTML = `<pre style="white-space: pre-wrap; font-family: monospace; font-size: 12px;">${readme.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`;
         ($('readme-modal') as HTMLElement).style.display = 'block';
         logger.printToConsole('README displayed');
     } catch (e) {
-        printToNotify(`Failed to load README: ${e}`,'ERROR');
+        printToNotify(`Failed to load README: ${e}`, 'ERROR');
     }
 }
 

@@ -8,79 +8,88 @@
 function $(id: string): HTMLElement | null {
     return document.getElementById(id);
 }
+
 /**
  * Add click event listener to element by ID
  * @param id - Element ID
- * @param handler - Click event handler
+ * @param handler - Click event handler, receives the button element
  */
-function setOnClick(id: string, handler: () => void | Promise<void>): void {
+function setOnClick(id: string, handler: (btn: HTMLButtonElement) => void | Promise<void>): void {
     const element = $(id) as HTMLButtonElement | null;
-    element?.addEventListener('click', handler);
+    element?.addEventListener('click', () => handler(element));
+}
+// Extend HTMLButtonElement to support abort controller
+interface ButtonWithAbort extends HTMLButtonElement {
+    _abortController?: AbortController | null;
 }
 
-// /**
-//  * Set button loading state
-//  * @param button Button element
-//  * @param loading Loading state
-//  */
-// function setButtonLoading(button: HTMLButtonElement | null, loading: boolean = true): void {
-//     if (!button) return;
-//     if (loading) {
-//         button.classList.add('loading');
-//         button.disabled = true;
-//     } else {
-//         button.classList.remove('loading');
-//         button.disabled = false;
-//     }
-// }
+/**
+ * Toggle button state with cancelable operation
+ * @param button Button with _abortController
+ * @param onActivate Called when activating, receives AbortController
+ * @param onStop Called when stopping
+ */
+async function toggleButton(
+    button: ButtonWithAbort,
+    onActivate: (btn: ButtonWithAbort) => Promise<AbortController | null >,
+    onStop: (btn: ButtonWithAbort) => void
+): Promise<void> {
+    if (button._abortController) {
+        button._abortController.abort();
+        button._abortController = null;
+        setButtonActivate(button, false);
+        onStop(button);
+    } else {
+        const controller = await onActivate(button);
+        if (controller) {
+            button._abortController = controller;
+            setButtonActivate(button, true);
+        }
+    }
+}
 /**
  * Set button loading state
  * @param button Button element
  * @param loading Loading state
  */
-function setButtonLoading(button: HTMLButtonElement | null, disable: boolean = true): void {
+function setButtonLoading(button: HTMLButtonElement, loading: boolean = true): void {
     if (!button) return;
-    if(button.classList.contains('loading')){
-        button.classList.remove('loading');
-    }
-    else{
+    if (loading) {
         button.classList.add('loading');
-    }
-    //todo 这里disable和css loading中的pointer-events：none有冲突，要不然就设置一个button.activate的属性替代loading
-    if (disable) {
         button.disabled = true;
     } else {
+        button.classList.remove('loading');
         button.disabled = false;
     }
 }
 
-// /**
-//  * Update status class based on content
-//  * @param element Target element
-//  * @param value Value to check
-//  */
-// function updateStatusClass(element: HTMLElement | null, value: string): void {
-//     if (!element) return;
-//     element.classList.remove('status-good', 'status-bad');
-//     const val = value.toString().toLowerCase();
-//     if (val.includes('running') || val.includes('ok') || val.includes('charging') || val.includes('uid=0')) {
-//         element.classList.add('status-good');
-//     } else if (val.includes('error') || val.includes('failed') || val.includes('not') || val.includes('stop')) {
-//         element.classList.add('status-bad');
-//     }
-// }
+/**
+ * Set button activate state (toggleable, clickable)
+ * @param button Button element
+ * @param activate Activate state
+ */
+function setButtonActivate(button: HTMLButtonElement, activate: boolean = true): void {
+    if (!button) return;
+    if (activate) {
+        button.classList.add('activate');
+    } else {
+        button.classList.remove('activate');
+    }
+}
+
 /**
  * Update status class based on content
  * @param element Target element
  * @param value Value to check
  */
-function updateStatusClass(element: HTMLElement | null, value: boolean | ''=''): void {
+function updateStatusClass(element: HTMLElement | null, value: boolean | '' = ''): void {
     if (!element) return;
     element.classList.remove('status-good', 'status-bad');
-    if (value==true) {
+    if (value == true) {
         element.classList.add('status-good');
-    } else if (value==false) {
+    } else if (value == false) {
         element.classList.add('status-bad');
     }
 }
-export {$,setOnClick,setButtonLoading,updateStatusClass}
+export { $, setOnClick, toggleButton, setButtonLoading, setButtonActivate, updateStatusClass }
+export type { ButtonWithAbort };

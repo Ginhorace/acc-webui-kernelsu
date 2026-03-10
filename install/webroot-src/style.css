@@ -246,68 +246,57 @@ button:disabled {
 }
 
 /* Primary action buttons */
-#refresh-btn,
-#save-config-btn,
-#load-config-btn {
+.primary-button {
     background: linear-gradient(135deg, var(--info) 0%, #2563eb 100%);
     color: white;
     border-color: transparent;
     box-shadow: var(--shadow-md), 0 0 20px rgba(59, 130, 246, 0.3);
 }
 
-#refresh-btn:hover,
-#save-config-btn:hover,
-#load-config-btn:hover {
+.primary-button:hover {
     background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
     box-shadow: var(--shadow-lg), 0 0 25px rgba(59, 130, 246, 0.4);
 }
 
 /* Success action buttons */
-#enable-charging-btn,
-#force-charge-btn,
-#start-btn {
+.success-button {
     background: linear-gradient(135deg, var(--good) 0%, #059669 100%);
     color: white;
     border-color: transparent;
     box-shadow: var(--shadow-md), 0 0 20px rgba(16, 185, 129, 0.3);
 }
 
-#enable-charging-btn:hover,
-#force-charge-btn:hover,
-#start-btn:hover {
+.success-button:hover {
     background: linear-gradient(135deg, #059669 0%, #047857 100%);
     box-shadow: var(--shadow-lg), 0 0 25px rgba(16, 185, 129, 0.4);
 }
 
 /* Warning action buttons */
-#disable-charging-btn,
-#stop-btn,
-#reset-battery-stats-btn {
+.warn-button {
     background: linear-gradient(135deg, var(--warning) 0%, #d97706 100%);
     color: white;
     border-color: transparent;
     box-shadow: var(--shadow-md), 0 0 20px rgba(245, 158, 11, 0.3);
 }
 
-#disable-charging-btn:hover,
-#stop-btn:hover,
-#reset-battery-stats-btn:hover {
+.warn-button:hover {
     background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
     box-shadow: var(--shadow-lg), 0 0 25px rgba(245, 158, 11, 0.4);
 }
 
 /* Danger action buttons */
-#uninstall-btn {
+.danger-button {
     background: linear-gradient(135deg, var(--bad) 0%, #dc2626 100%);
     color: white;
     border-color: transparent;
     box-shadow: var(--shadow-md), 0 0 20px rgba(239, 68, 68, 0.3);
 }
 
-#uninstall-btn:hover {
+.danger-button:hover {
     background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
     box-shadow: var(--shadow-lg), 0 0 25px rgba(239, 68, 68, 0.4);
-}
+}  
+
 
 button.loading {
     position: relative;
@@ -325,6 +314,26 @@ button.loading::after {
     margin-left: -8px;
     margin-top: -8px;
     border: 2px solid #666666;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+button.activate {
+    position: relative;
+    filter: brightness(1.15);
+}
+
+button.activate::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 16px;
+    height: 16px;
+    margin-left: -8px;
+    margin-top: -8px;
+    border: 2px solid rgba(255, 255, 255, 0.6);
     border-top-color: transparent;
     border-radius: 50%;
     animation: spin 0.6s linear infinite;

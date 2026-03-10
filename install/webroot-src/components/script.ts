@@ -27,13 +27,14 @@ async function verifySystem(): Promise<void> {
     try {
         printToConsole('Checking root access...');
         const idResult = await checkId();
-        printToConsole(`Root check result: ${idResult}`);
+        const idOutput = idResult?.stdout || '';
+        printToConsole(`Root check result: ${idOutput}`);
 
         ($('root-status') as HTMLElement).textContent =
-            idResult.includes('uid=0') ? 'Root access OK' : 'Root access failed';
-        updateStatusClass($('root-status'), idResult.includes('uid=0'));
+            idOutput.includes('uid=0') ? 'Root access OK' : 'Root access failed';
+        updateStatusClass($('root-status'), idOutput.includes('uid=0'));
 
-        if (!idResult.includes('uid=0')) {
+        if (!idOutput.includes('uid=0')) {
             hideLoadingOverlay();
             throw new Error('Root access not granted');
         }

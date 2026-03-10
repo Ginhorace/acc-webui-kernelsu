@@ -66,11 +66,12 @@ function ensurePromptDom(): void {
 }
 
 /**
- * @param message
- * @param defaultValue
- * @returns 
+ * 自定义 prompt 对话框（异步实现）
+ * @param message - 提示消息
+ * @param defaultValue - 输入框默认值
+ * @returns 用户输入的字符串，或 null（用户取消）
  */
-async function customPrompt(message: string, defaultValue: string = ''): Promise<string | null> {
+function customPrompt(message: string, defaultValue: string = ''): Promise<string | null> {
     ensurePromptDom();
     const mask = getElementById('custom-prompt-mask') as HTMLDivElement;
     const dialog = getElementById('custom-prompt-dialog') as HTMLDivElement;
