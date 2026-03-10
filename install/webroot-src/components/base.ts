@@ -27,23 +27,20 @@ interface ButtonWithAbort extends HTMLButtonElement {
  * Toggle button state with cancelable operation
  * @param button Button with _abortController
  * @param onActivate Called when activating, receives AbortController
- * @param onStop Called when stopping
  */
-async function toggleButton(
+async function activateWithAbort(
     button: ButtonWithAbort,
-    onActivate: (btn: ButtonWithAbort) => Promise<AbortController | null >,
-    onStop: (btn: ButtonWithAbort) => void
+    onActivate: (btn: ButtonWithAbort) => Promise<AbortController | null>
 ): Promise<void> {
     if (button._abortController) {
         button._abortController.abort();
         button._abortController = null;
-        setButtonActivate(button, false);
-        onStop(button);
+        button.classList.remove('activate');
     } else {
         const controller = await onActivate(button);
         if (controller) {
             button._abortController = controller;
-            setButtonActivate(button, true);
+            button.classList.add('activate');
         }
     }
 }
@@ -52,28 +49,19 @@ async function toggleButton(
  * @param button Button element
  * @param loading Loading state
  */
-function setButtonLoading(button: HTMLButtonElement, loading: boolean = true): void {
+function setButtonLoading(button: HTMLButtonElement | HTMLDivElement, loading: boolean = true): void {
     if (!button) return;
     if (loading) {
         button.classList.add('loading');
-        button.disabled = true;
+        if (button instanceof HTMLButtonElement) {
+            button.disabled = true;
+        }
     } else {
         button.classList.remove('loading');
-        button.disabled = false;
-    }
-}
+        if (button instanceof HTMLButtonElement) {
+            button.disabled = false;
+        }
 
-/**
- * Set button activate state (toggleable, clickable)
- * @param button Button element
- * @param activate Activate state
- */
-function setButtonActivate(button: HTMLButtonElement, activate: boolean = true): void {
-    if (!button) return;
-    if (activate) {
-        button.classList.add('activate');
-    } else {
-        button.classList.remove('activate');
     }
 }
 
@@ -91,5 +79,25 @@ function updateStatusClass(element: HTMLElement | null, value: boolean | '' = ''
         element.classList.add('status-bad');
     }
 }
-export { $, setOnClick, toggleButton, setButtonLoading, setButtonActivate, updateStatusClass }
+
+/**
+ * Parse config string into key-value map
+ * @param config Config string with lines like "key=value"
+ * @returns Record of config key-value pairs
+ */
+function parseConfig(config: string): Record<string, string> {
+    const configMap: Record<string, string> = {};
+    const configLines = config.split('\n').filter((line: string) => line.trim() && line.includes('='));
+
+    configLines.forEach((line: string) => {
+        const match = line.match(/^([^=]+)=(.*)$/);
+        if (match) {
+            configMap[match[1].trim()] = match[2].replaceAll('"', '').trim();
+        }
+    });
+
+    return configMap;
+}
+
+export { $, setOnClick, activateWithAbort, setButtonLoading, updateStatusClass, parseConfig }
 export type { ButtonWithAbort };

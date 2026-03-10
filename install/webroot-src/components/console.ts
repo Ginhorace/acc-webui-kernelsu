@@ -1,8 +1,7 @@
 // Settings Tab - Profile settings management
 import * as logger from '../config/logger';
 import { $ } from './base';
-import { setConsoleListener, printToNotify, } from '../config/logger';
-setConsoleListener((message, level) => {
+logger.setConsoleListener((message, level) => {
     switch (level) {
         case 'ERROR': console.error(message); break;
         case 'WARN': console.warn(message); break;
@@ -52,11 +51,11 @@ function handleDebugModeChange(select: HTMLSelectElement, debugConsoleCard: HTML
     if (debugConsoleCard) {
         if (isEnabled) {
             debugConsoleCard.classList.add('enabled');
-            printToNotify('Debug console enabled - visible on all pages');
+            logger.printToNotify('Debug console enabled - visible on all pages');
             logger.setLogLevel('DEBUG');
         } else {
             debugConsoleCard.classList.remove('enabled');
-            printToNotify('Debug console disabled');
+            logger.printToNotify('Debug console disabled');
             logger.setLogLevel('INFO');
         }
     }

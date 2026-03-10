@@ -1,4 +1,4 @@
-import { exec,setLogPrinter} from '../env/ksu';
+import { buildCommand, exec, ExecResults, spawn, SpawnOptions } from '../env/ksu';
 // Logger module extracted from script.ts
 // Provides logging functions for use across the WebUI
 
@@ -16,36 +16,25 @@ type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
 const logLevels: LogLevel[] = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
 
+type printLog = (message: string, logLevel: LogLevel) => void;
+
+var notificationListener: printLog = () => { };
+var consoleListener: printLog = (message) => { console.error(message) };
+
 /**
  * 保证logs文件夹存在
  * @returns 
  */
-async function initLogDirectory(): Promise<boolean> {
-    const result = await exec(`mkdir -p "${config.logDir}" && chmod 755 "${config.logDir}"`);
-    if (result.errno === 0) {
-        return true;
-    }
-    else {
-        console.error(`Failed to create log directory: ${result.stderr}`);
-        return false;
-    }
+async function initLogDirectory(): Promise<ExecResults> {
+    return exec(`mkdir -p "${config.logDir}" && chmod 755 "${config.logDir}"`);
+
 }
 
-async function clearLogs(): Promise<boolean> {
-    const result = await exec(`: > "${config.logFile}"`);
-    if (result.errno === 0) {
-        console.info("Logs cleared");
-        return true;
-    } else {
-        console.error(`Failed to clear logs: ${result.stderr}`);
-        return false;
-    }
+async function clearLogs(): Promise<ExecResults> {
+    return exec(`: > "${config.logFile}"`);
 }
 
 
-type printLog = ((message: string, logLevel: LogLevel) => (void | Promise<void>)) | undefined;
-var notificationListener: printLog = undefined;
-var consoleListener: printLog = undefined;
 
 function setNotificationListener(printLog: printLog) {
     notificationListener = printLog
@@ -89,13 +78,32 @@ async function printToFile(message: string, level: LogLevel = 'INFO'): Promise<b
     const escapedEntry = logEntry.replace(/'/g, "'\\''");
     const result = await exec(`printf '%s\\n' '${escapedEntry}' >> "${config.logFile}"`);
     if (result.errno !== 0) {
-        console.error(`Failed to write log: ${result.stderr}`);
+        consoleListener(`Failed to write log: ${result.stderr}`, "ERROR");
         return false;
     }
     return true;
 
 }
-
+/**
+ * 执行指令并返回完整结果（底层 API）
+ * @param command 命令
+ * @param args 参数数组
+ * @returns 完整的执行结果，包含 errno、stdout、stderr
+ */
+async function execAndLog(command: string, args: string[] = []): Promise<ExecResults> {
+    const fullCmd = buildCommand(command, args);
+    printToConsole(`[exec] ${fullCmd}`, 'DEBUG');
+    return await exec(fullCmd);
+}
+function spawnAndLog(
+    command: string,
+    args: string[] = [],
+    options: SpawnOptions = {}
+): AbortController {
+    const fullCmd = buildCommand(command, args);
+    printToConsole(`[exec] ${fullCmd}`, 'DEBUG');
+    return spawn(command, args, options);
+}
 /**
  * 根据日志等级控制是否打印
  * @param level 
@@ -111,10 +119,6 @@ function setLogLevel(level: LogLevel) {
     config.logLevel = level;
 }
 
-
-// 初始化：注入日志打印器到 ksu 模块
-setLogPrinter(printToConsole);
-
 export {
     setLogLevel,
     initLogDirectory,
@@ -124,6 +128,8 @@ export {
     printToConsole,
     printToFile,
     clearLogs,
+    execAndLog,
+    spawnAndLog
 };
 
 export type { LogLevel };

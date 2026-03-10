@@ -173,18 +173,18 @@ h2::before {
 }
 
 .status-value.status-good,
-.good {
+.good { /* UNUSED: .good class not used in HTML/TS */
     color: var(--good);
     background: transparent;
 }
 
 .status-value.status-bad,
-.bad {
+.bad { /* UNUSED: .bad class not used in HTML/TS */
     color: var(--bad);
     background: transparent;
 }
 
-.warning {
+.warning { /* UNUSED: .warning class not used in HTML/TS */
     color: var(--warning);
     background: var(--warning-bg);
 }
@@ -319,30 +319,59 @@ button.loading::after {
     animation: spin 0.6s linear infinite;
 }
 
-button.activate {
-    position: relative;
-    filter: brightness(1.15);
+/* 激活状态 - 彩线边框旋转效果 */
+@property --activate-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
 }
 
-button.activate::after {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 16px;
-    height: 16px;
-    margin-left: -8px;
-    margin-top: -8px;
-    border: 2px solid rgba(255, 255, 255, 0.6);
-    border-top-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
+button.activate {
+    border: 2px solid transparent;
+    color: white;
+    background: 
+        linear-gradient(135deg, var(--green) 0%, #059669 100%) padding-box,
+        conic-gradient(
+            from var(--activate-angle),
+            var(--green),
+            var(--info),
+            var(--warning),
+            var(--bad),
+            var(--orange),
+            var(--green)
+        ) border-box;
+    animation: rotateGradient 2s linear infinite;
+}
+
+button.activate:hover {
+    background: 
+        linear-gradient(135deg, #059669 0%, #047857 100%) padding-box,
+        conic-gradient(
+            from var(--activate-angle),
+            var(--green),
+            var(--info),
+            var(--warning),
+            var(--bad),
+            var(--orange),
+            var(--green)
+        ) border-box;
+}
+
+@keyframes rotateGradient {
+    to {
+        --activate-angle: 360deg;
+    }
 }
 
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
 }
+
 
 @keyframes pulse {
     0%, 100% {
@@ -511,9 +540,11 @@ button.activate::after {
 }
 
 /* Variants remain solid when used as overlay */
-#error-display.error-box.info { background: #ffffff; border-left-color: var(--info); }
-#error-display.error-box.success { background: #ffffff; border-left-color: var(--good); }
+#error-display.error-box.debug { background: #ffffff; border-left-color: var(--info); }
+#error-display.error-box.info { background: #ffffff; border-left-color: var(--good); }
 #error-display.error-box.warn { background: #ffffff; border-left-color: var(--warning); }
+#error-display.error-box.error { background: #ffffff; border-left-color: var(--bad); }
+
 
 /* Floating error display animation - preserves centering */
 #error-display.error-box {
@@ -560,6 +591,7 @@ button.activate::after {
     font-size: 16px;
 }
 
+/* UNUSED: .toggle-btn class not used in HTML/TS */
 .toggle-btn {
     margin: 10px 0;
     padding: 8px 15px;
@@ -572,8 +604,8 @@ button.activate::after {
     text-align: left;
 }
 
-#log-panel, 
-.debug-panel {
+#log-panel,
+.debug-panel { /* UNUSED: .debug-panel class not used in HTML/TS */
     display: none;
     margin-top: 10px;
 }

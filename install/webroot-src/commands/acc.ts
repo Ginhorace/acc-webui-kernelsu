@@ -1,5 +1,5 @@
-import { execAndLog,ExecResults, runSpawn } from '../env/ksu';
-import { printToConsole, config } from '../config/logger';
+import { ExecResults } from '../env/ksu';
+import { execAndLog, spawnAndLog,  printToConsole, config } from '../config/logger';
 
 const { binDir, execDir } = config;
 
@@ -39,16 +39,12 @@ async function initAccPath(): Promise<boolean> {
         ACC_PATHS.unshift(window.ACC.accPath);
     }
     for (const path of ACC_PATHS) {
-        try {
-            const result = await execAndLog(path, ['-v']);
-            if (result.errno === 0) {
-                printToConsole(`ACC found at ${path}, version: ${result.stdout}`);
-                globalAccPath = path;
-                globalAccVersion = result.stdout.trim();
-                return true;
-            }
-        } catch (e) {
-            printToConsole(`Not found at ${path}: ${e}`, 'ERROR');
+        const result = await execAndLog(path, ['-v']);
+        if (result.errno === 0) {
+            printToConsole(`ACC found at ${path}, version: ${result.stdout}`);
+            globalAccPath = path;
+            globalAccVersion = result.stdout.trim();
+            return true;
         }
     }
     return false;
@@ -64,6 +60,22 @@ async function execAccAndLog(args: string[] = []): Promise<ExecResults> {
         return { errno: -1, stdout: '', stderr: 'ACC path not initialized' };
     }
     return execAndLog(globalAccPath, args);
+}
+/**
+ * 执行acca相关指令 支持
+ * -D #查看状态
+ * -i #打印信息
+ * -s = #设置多条配置
+ * -s d #打印默认属性
+ * -s p #打印当前属性
+ * @param args 
+ * @returns 
+ */
+async function execAccaAndLog(args: string[] = []): Promise<ExecResults> {
+    if (!globalAccPath) {
+        return { errno: -1, stdout: '', stderr: 'ACC path not initialized' };
+    }
+    return execAndLog(globalAccPath+'a', args);
 }
 
 
@@ -108,7 +120,7 @@ function disableChargingSpawn(
         onError?: (err: any) => void;
     } = {}
 ): AbortController {
-    return runSpawn(globalAccPath, ['-d', input.trim()], options);
+    return spawnAndLog(globalAccPath, ['-d', input.trim()], options);
 }
 
 /**
@@ -130,7 +142,7 @@ function enableChargingSpawn(
         onError?: (err: any) => void;
     } = {}
 ): AbortController {
-    return runSpawn(globalAccPath, ['-e', input.trim()], options);
+    return spawnAndLog(globalAccPath, ['-e', input.trim()], options);
 }
 
 /**
@@ -161,18 +173,34 @@ async function resetStats(): Promise<ExecResults> {
  *    acc -D start (alias: accd)
  *    acc -D restart (alias: accd)
  *    accd -D stop (alias: "accd.")
- * @returns 
+ * @param options 选项（包含回调）
+ * @returns AbortController 用于取消进程
  */
-async function restartAccd(): Promise<ExecResults> {
-    return execAccAndLog(['-D', 'restart']);
+function restartAccdSpawn(
+    options: {
+        onStdout?: (data: string) => void;
+        onStderr?: (data: string) => void;
+        onExit?: (code: number) => void;
+        onError?: (err: any) => void;
+    } = {}
+): AbortController {
+    return spawnAndLog(globalAccPath, ['-D', 'restart'], options);
 }
 
-async function startAccd(): Promise<ExecResults> {
-    return execAccAndLog(['-D', 'start']);
-}
 
-async function stopAccd(): Promise<ExecResults> {
-    return execAccAndLog(['-D', 'stop']);
+/**
+ * @param options 选项（包含回调）
+ * @returns AbortController 用于取消进程
+ */
+function stopAccdSpawn(
+    options: {
+        onStdout?: (data: string) => void;
+        onStderr?: (data: string) => void;
+        onExit?: (code: number) => void;
+        onError?: (err: any) => void;
+    } = {}
+): AbortController {
+    return spawnAndLog(globalAccPath, ['-D', 'stop'], options);
 }
 
 /**
@@ -187,9 +215,18 @@ async function checkAccd(): Promise<ExecResults> {
  *    e.g., acc -l -e
  *
  *  -le   Same as -l -e
+ * @param options 选项（包含回调）
+ * @returns AbortController 用于取消进程
  */
-async function exportLogs(): Promise<ExecResults> {
-    return execAccAndLog(['-le']);
+function exportLogsSpawn(
+    options: {
+        onStdout?: (data: string) => void;
+        onStderr?: (data: string) => void;
+        onExit?: (code: number) => void;
+        onError?: (err: any) => void;
+    } = {}
+): AbortController {
+    return spawnAndLog(globalAccPath, ['-le'], options);
 }
 
 /**
@@ -202,9 +239,18 @@ async function exportLogs(): Promise<ExecResults> {
  *      acc -u v2020.4.8-beta --force (force upgrade/downgrade to v2020.4.8-beta)
  *      acc -u -c -n (if update is available, prints version code (integer) and changelog)
  *      acc -u -c (same as above, but with install prompt)
+ * @param options 选项（包含回调）
+ * @returns AbortController 用于取消进程
  */
-async function printVersionCode(): Promise<ExecResults> {
-    return execAccAndLog(['-u', '-c', '-n']);
+function printVersionCodeSpawn(
+    options: {
+        onStdout?: (data: string) => void;
+        onStderr?: (data: string) => void;
+        onExit?: (code: number) => void;
+        onError?: (err: any) => void;
+    } = {}
+): AbortController {
+    return spawnAndLog(globalAccPath, ['-u', '-c', '-n'], options);
 }
 
 /**
@@ -217,18 +263,35 @@ async function printVersionCode(): Promise<ExecResults> {
  *      acc -u v2020.4.8-beta --force (force upgrade/downgrade to v2020.4.8-beta)
  *      acc -u -c -n (if update is available, prints version code (integer) and changelog)
  *      acc -u -c (same as above, but with install prompt)
+ * @param options 选项（包含回调）
+ * @returns AbortController 用于取消进程
  */
-async function upgrade(): Promise<ExecResults> {
-    return execAccAndLog(['-u', '-f']);
+function upgradeSpawn(
+    options: {
+        onStdout?: (data: string) => void;
+        onStderr?: (data: string) => void;
+        onExit?: (code: number) => void;
+        onError?: (err: any) => void;
+    } = {}
+): AbortController {
+    return spawnAndLog(globalAccPath, ['-u', '-f'], options);
 }
 
 /**
  *   -U|--uninstall   Completely remove acc and AccA
  *    e.g., acc -U
- * @returns 
+ * @param options 选项（包含回调）
+ * @returns AbortController 用于取消进程
  */
-async function uninstall(): Promise<ExecResults> {
-    return execAccAndLog(['-U']);
+function uninstallSpawn(
+    options: {
+        onStdout?: (data: string) => void;
+        onStderr?: (data: string) => void;
+        onExit?: (code: number) => void;
+        onError?: (err: any) => void;
+    } = {}
+): AbortController {
+    return spawnAndLog('sh', ['-c', `echo yes | "${globalAccPath}" -U`], options);
 }
 
 /**
@@ -251,7 +314,7 @@ async function version(): Promise<ExecResults> {
 /**
  *   -s|--set s:|chargingSwitch:   List known charging switches
  *    e.g., acc -s s:
- *
+ *  todo 可能需要运行一次-t 测试开关才行
  *  -ss:   Same as above
  * @returns 
  */
@@ -269,7 +332,7 @@ async function loadingSwitch(): Promise<ExecResults> {
  * @param input 
  */
 async function setConfig(input: string): Promise<ExecResults> {
-    return execAccAndLog(['-s', input.trim()]);
+     return execAccaAndLog(['-s', input.trim()]);
 }
 
 /**
@@ -299,11 +362,10 @@ function testSwitch(
         onError?: (err: any) => void;
     } = {}
 ): AbortController {
-    return runSpawn(globalAccPath, ['-t'], options);
+    return spawnAndLog(globalAccPath, ['-t'], options);
 }
 
 export {
-    execAccAndLog,
     getAccPath,
     getAccVersion,
     initAccPath,
@@ -314,14 +376,13 @@ export {
     enableChargingSpawn,
     forceCharging,
     resetStats,
-    restartAccd,
-    startAccd,
-    stopAccd,
+    restartAccdSpawn,
+    stopAccdSpawn,
     checkAccd,
-    exportLogs,
-    printVersionCode,
-    upgrade,
-    uninstall,
+    exportLogsSpawn,
+    printVersionCodeSpawn,
+    upgradeSpawn,
+    uninstallSpawn,
     rollback,
     version,
     loadingSwitch,

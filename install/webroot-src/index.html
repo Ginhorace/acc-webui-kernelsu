@@ -136,20 +136,22 @@
             </div>
 
             <div id="profile-tab" class="main-tab-pane">
-                <div class="card" id="profile-panel" style="display: none;">
-                    <h2>Profile</h2>
-                    <div id="profile-display">
-                        <div class="status-item">
-                            <span class="status-key">Charge Limit:</span>
-                            <span class="status-value" id="charge-limit">-</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="status-key">Resume Charge:</span>
-                            <span class="status-value" id="resume-charge">-</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="status-key">Pause at:</span>
-                            <span class="status-value" id="pause-at">-</span>
+                <div id="profile-container" style="display: none;">
+                    <div class="card profile-panel" id="current-profile">
+                        <h2 id="profile-name"></h2>
+                        <div class="profile-display">
+                            <div class="status-item">
+                                <span class="status-key">Charge Limit:</span>
+                                <span class="status-value" id="charge-limit">-</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-key">Resume Charge:</span>
+                                <span class="status-value" id="resume-charge">-</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-key">Pause at:</span>
+                                <span class="status-value" id="pause-at">-</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -341,7 +343,6 @@
                         <button class="warn-button" id="upgrade-btn">Check for Updates</button>
                         <button class="danger-button" id="uninstall-btn">Uninstall ACC</button>
                         <button class="danger-button" id="rollback-btn">Rollback</button>
-                        <button class="success-button" id="version-btn">Show Version</button>
                         <button class="success-button" id="readme-btn">Open Manual</button>
                     </div>
                 </div>

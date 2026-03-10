@@ -2,12 +2,105 @@
 import * as logger from '../config/logger';
 import { createProfileDir, saveProfileConfig, loadProfileConfig } from '../commands/command';
 import * as acc from '../commands/acc';
-import { printToNotify } from '../config/logger';
-import { printToConsole } from '../config/logger';
 import { customPrompt } from './dialog';
 import { customConfirm } from './confirm';
-import { $, setOnClick } from './base';
+import { $, setButtonLoading, setOnClick, parseConfig } from './base';
 
+/**
+ * Config field mapping between UI element and ACC config name
+ */
+interface ConfigMapping {
+    elementName: string;
+    configName: string;
+    required?: boolean; // If true, always include even when empty
+}
+
+/**
+ * Config mappings for all settings fields
+ */
+const CONFIG_MAPPINGS: ConfigMapping[] = [
+    // Basic settings
+    { elementName: 'pause-capacity', configName: 'pause_capacity' },
+    { elementName: 'resume-capacity', configName: 'resume_capacity' },
+    { elementName: 'shutdown-capacity', configName: 'shutdown_capacity' },
+    { elementName: 'capacity-mask', configName: 'capacity_mask', required: true },
+
+    // Limits
+    { elementName: 'max-current', configName: 'max_charging_current' },
+    { elementName: 'max-voltage', configName: 'max_charging_voltage' },
+    { elementName: 'temp-level', configName: 'temp_level' },
+
+    // Advanced settings
+    { elementName: 'prioritize-idle', configName: 'prioritize_batt_idle_mode', required: true },
+    { elementName: 'force-off', configName: 'force_off', required: true },
+    { elementName: 'reboot-resume', configName: 'reboot_resume', required: true },
+    { elementName: 'reset-batt-stats-on-pause', configName: 'reset_batt_stats_on_pause', required: true },
+    { elementName: 'reset-batt-stats-on-plug', configName: 'reset_batt_stats_on_plug', required: true },
+    { elementName: 'reset-batt-stats-on-unplug', configName: 'reset_batt_stats_on_unplug', required: true },
+
+    // Cooldown settings
+    { elementName: 'cooldown-capacity', configName: 'cooldown_capacity' },
+    { elementName: 'cooldown-temp', configName: 'cooldown_temp' },
+    { elementName: 'cooldown-current', configName: 'cooldown_current' },
+    { elementName: 'cooldown-charge', configName: 'cooldown_charge' },
+    { elementName: 'cooldown-pause', configName: 'cooldown_pause' },
+
+    // Other settings
+    { elementName: 'charging-switch', configName: 'charging_switch' },
+    { elementName: 'batt-status-override', configName: 'batt_status_override' },
+    { elementName: 'idle-apps', configName: 'idle_apps' },
+    { elementName: 'run-cmd-on-pause', configName: 'run_cmd_on_pause' },
+    { elementName: 'apply-on-boot', configName: 'apply_on_boot' },
+    { elementName: 'apply-on-plug', configName: 'apply_on_plug' },
+];
+/**
+ * Get input/select element value
+ * @param id
+ * @returns 
+ */
+function getVal(id: string): string {
+    const el = $(id);
+    return el ? (el as HTMLInputElement | HTMLSelectElement).value : '';
+}
+
+
+
+/**
+ * Build config commands from current UI values
+ * @returns Array of config commands
+ */
+function buildConfigCommands(): string[] {
+    const commands: string[] = [];
+    const cooldownChargeVal = getVal('cooldown-charge');
+    const cooldownPauseVal = getVal('cooldown-pause');
+    const hasCooldownPair = cooldownChargeVal && cooldownPauseVal;
+
+    for (const mapping of CONFIG_MAPPINGS) {
+        // Special handling for cooldown pair
+        if ((mapping.elementName === 'cooldown-charge' || mapping.elementName === 'cooldown-pause') && !hasCooldownPair) {
+            continue;
+        }
+
+        const value = getVal(mapping.elementName);
+        if (mapping.required || value) {
+            commands.push(`${mapping.configName}=${value}`);
+        }
+    }
+
+    return commands;
+}
+
+
+/**
+ * todo  -s|--set l|--lang   Change language
+    e.g., acc -s l
+ */
+
+    /**
+     *  todo -s|--set p|--print [egrep regex (default: ".")]   Print current config without blank lines (refer to previous examples)
+
+      -sp [egrep regex (default: ".")]   Same as above
+     */
 /**
  * Initialize settings tab event listeners
  */
@@ -22,7 +115,7 @@ function initializeSettingsTab(): void {
     ]).finally(() => {
         panelClassList.remove('loading');
     });
-
+    //todo 可以通过-c|--config h string打印帮助?
     setOnClick('load-config-btn', handleLoadConfig);
     setOnClick('save-config-btn', handleSaveConfig);
     setOnClick('reset-config-btn', handleResetConfig);
@@ -49,17 +142,6 @@ function handleTabButtonClick(e: Event): void {
     }
 }
 
-
-/**
- * Get input/select element value
- * @param id
- * @returns 
- */
-function getVal(id: string): string {
-    const el = $(id);
-    return el ? (el as HTMLInputElement | HTMLSelectElement).value : '';
-}
-
 /**
  * Load current ACC Profile
  */
@@ -67,49 +149,19 @@ async function loadCurrentConfig(): Promise<void> {
     try {
         const configResult = await acc.printConfig();
         const config = configResult?.stdout || '';
-        const configLines = config.split('\n').filter((line: string) => line.trim());
+        const configMap = parseConfig(config);
 
-        const configMap: Record<string, string> = {};
-        configLines.forEach((line: string) => {
-            const match = line.match(/^([^=]+)=(.*)$/);
-            if (match) {
-                configMap[match[1].trim()] = match[2].replaceAll('"', '').trim();
+        // Apply config values to UI elements
+        for (const mapping of CONFIG_MAPPINGS) {
+            const el = $(mapping.elementName);
+            if (el) {
+                (el as HTMLInputElement | HTMLSelectElement).value = configMap[mapping.configName] || '';
             }
-        });
-
-        const setVal = (id: string, key: string): void => {
-            const el = $(id);
-            if (el) (el as HTMLInputElement | HTMLSelectElement).value = configMap[key] || '';
-        };
-        //todo 要格式化https://github.com/farrukh2002/acc-webui-kernelsu
-        setVal('pause-capacity', 'pause_capacity');
-        setVal('resume-capacity', 'resume_capacity');
-        setVal('shutdown-capacity', 'shutdown_capacity');
-        setVal('capacity-mask', 'capacity_mask');
-        setVal('max-current', 'max_charging_current');
-        setVal('max-voltage', 'max_charging_voltage');
-        setVal('temp-level', 'temp_level');
-        setVal('prioritize-idle', 'prioritize_batt_idle_mode');
-        setVal('force-off', 'force_off');
-        setVal('reboot-resume', 'reboot_resume');
-        setVal('reset-batt-stats-on-pause', 'reset_batt_stats_on_pause');
-        setVal('reset-batt-stats-on-plug', 'reset_batt_stats_on_plug');
-        setVal('reset-batt-stats-on-unplug', 'reset_batt_stats_on_unplug');
-        setVal('cooldown-capacity', 'cooldown_capacity');
-        setVal('cooldown-temp', 'cooldown_temp');
-        setVal('cooldown-current', 'cooldown_current');
-        setVal('cooldown-charge', 'cooldown_charge');
-        setVal('cooldown-pause', 'cooldown_pause');
-        setVal('charging-switch', 'charging_switch');
-        setVal('batt-status-override', 'batt_status_override');
-        setVal('idle-apps', 'idle_apps');
-        setVal('run-cmd-on-pause', 'run_cmd_on_pause');
-        setVal('apply-on-boot', 'apply_on_boot');
-        setVal('apply-on-plug', 'apply_on_plug');
+        }
 
         logger.printToConsole('Profile loaded into UI');
     } catch (e) {
-        printToNotify(`Failed to load Profile: ${e}`, 'ERROR');
+        logger.printToNotify(`Failed to load Profile: ${e}`, 'ERROR');
     }
 }
 
@@ -137,119 +189,15 @@ async function loadChargingSwitches(): Promise<void> {
             }
         });
     } catch (e) {
-        printToConsole(`Failed to load charging switches: ${e}`, 'ERROR');
+        logger.printToConsole(`Failed to load charging switches: ${e}`, 'ERROR');
     }
 }
 
-/**
- * Save Profile to ACC
- */
-async function saveConfig(): Promise<void> {
-    try {
-        const commands: string[] = [];
 
-        // Basic settings
-        if (getVal('pause-capacity')) {
-            commands.push(`pause_capacity=${getVal('pause-capacity')}`);
-        }
-        if (getVal('resume-capacity')) {
-            commands.push(`resume_capacity=${getVal('resume-capacity')}`);
-        }
-        if (getVal('shutdown-capacity')) {
-            commands.push(`shutdown_capacity=${getVal('shutdown-capacity')}`);
-        }
-        commands.push(`capacity_mask=${getVal('capacity-mask')}`);
 
-        // Limits
-        if (getVal('max-current')) {
-            commands.push(`max_charging_current=${getVal('max-current')}`);
-        }
-        if (getVal('max-voltage')) {
-            commands.push(`max_charging_voltage=${getVal('max-voltage')}`);
-        }
-        if (getVal('temp-level')) {
-            commands.push(`temp_level=${getVal('temp-level')}`);
-        }
 
-        // Advanced settings
-        commands.push(`prioritize_batt_idle_mode=${getVal('prioritize-idle')}`);
-        commands.push(`force_off=${getVal('force-off')}`);
-        commands.push(`reboot_resume=${getVal('reboot-resume')}`);
-        commands.push(`reset_batt_stats_on_pause=${getVal('reset-batt-stats-on-pause')}`);
-        commands.push(`reset_batt_stats_on_plug=${getVal('reset-batt-stats-on-plug')}`);
-        commands.push(`reset_batt_stats_on_unplug=${getVal('reset-batt-stats-on-unplug')}`);
 
-        // Cooldown settings
-        if (getVal('cooldown-capacity')) {
-            commands.push(`cooldown_capacity=${getVal('cooldown-capacity')}`);
-        }
-        if (getVal('cooldown-temp')) {
-            commands.push(`cooldown_temp=${getVal('cooldown-temp')}`);
-        }
-        if (getVal('cooldown-current')) {
-            commands.push(`cooldown_current=${getVal('cooldown-current')}`);
-        }
-        if (getVal('cooldown-charge') && getVal('cooldown-pause')) {
-            commands.push(`cooldown_charge=${getVal('cooldown-charge')}`);
-            commands.push(`cooldown_pause=${getVal('cooldown-pause')}`);
-        }
 
-        // Other settings
-        if (getVal('charging-switch')) {
-            commands.push(`charging_switch=${getVal('charging-switch')}`);
-        }
-        if (getVal('batt-status-override')) {
-            commands.push(`batt_status_override=${getVal('batt-status-override')}`);
-        }
-        if (getVal('idle-apps')) {
-            commands.push(`idle_apps=${getVal('idle-apps')}`);
-        }
-        if (getVal('run-cmd-on-pause')) {
-            commands.push(`run_cmd_on_pause=${getVal('run-cmd-on-pause')}`);
-        }
-        if (getVal('apply-on-boot')) {
-            commands.push(`apply_on_boot=${getVal('apply-on-boot')}`);
-        }
-        if (getVal('apply-on-plug')) {
-            commands.push(`apply_on_plug=${getVal('apply-on-plug')}`);
-        }
-
-        // Execute all commands
-        for (const cmd of commands) {
-            await acc.setConfig(cmd);
-        }
-
-        printToNotify('Profile saved successfully!');
-
-        // Restart accd to apply changes
-        try {
-            await acc.restartAccd();
-        } catch (e) {
-            printToConsole(`Could not restart accd: ${e}`, 'ERROR');
-        }
-    } catch (e) {
-        printToNotify(`Failed to save Profile: ${e}`, 'ERROR');
-    }
-}
-
-/**
- * Reset Profile to defaults
- */
-async function resetConfig(): Promise<void> {
-    try {
-        await acc.resetConfig();
-        await loadCurrentConfig();
-        printToNotify('Profile reset to defaults!');
-
-        try {
-            await acc.restartAccd();
-        } catch (e) {
-            printToConsole(`Could not restart accd: ${e}`, 'ERROR');
-        }
-    } catch (e) {
-        printToNotify(`Failed to reset Profile: ${e}`, 'ERROR');
-    }
-}
 
 /**
  * Handle load config button click
@@ -266,12 +214,28 @@ function handleLoadConfig(): void {
  * Handle save config button click
  */
 async function handleSaveConfig(): Promise<void> {
-    const panelClassList = ($('settings-panel') as HTMLDivElement).classList;
+    const panel = $('settings-panel') as HTMLDivElement;
     if (await customConfirm('Are you sure you want to save these settings?')) {
-        panelClassList.add('loading');
-        saveConfig().finally(() => {
-            panelClassList.remove('loading');
-        });
+        setButtonLoading(panel, true);
+        setTimeout(async () => {
+            try {
+                const commands = buildConfigCommands();
+                // Execute all commands
+                for (const cmd of commands) {
+                    await acc.setConfig(cmd);
+                }
+                logger.printToNotify('Profile saved successfully!');
+                acc.restartAccdSpawn({});
+            }
+            catch (e) {
+                logger.printToConsole(`${e}`);
+            }
+            finally {
+                setButtonLoading(panel, false);
+            }
+        }, 0);
+
+
     }
 }
 
@@ -279,59 +243,79 @@ async function handleSaveConfig(): Promise<void> {
  * Handle reset config button click
  */
 async function handleResetConfig(): Promise<void> {
-    const panelClassList = ($('settings-panel') as HTMLDivElement).classList;
+    const panel = $('settings-panel') as HTMLDivElement;
     if (await customConfirm('Are you sure you want to reset all settings to defaults?')) {
-        panelClassList.add('loading');
-        resetConfig().finally(() => {
-            panelClassList.remove('loading');
-        });
+        setButtonLoading(panel, true);
+        setTimeout(async () => {
+            try {
+                await acc.resetConfig();
+                await loadCurrentConfig();
+                logger.printToNotify('Profile reset to defaults!');
+
+            } catch (e) {
+                logger.printToNotify(`Failed to reset Profile: ${e}`, 'ERROR');
+            }
+            finally {
+                setButtonLoading(panel, false);
+            }
+        }, 0);
     }
 }
 
 /**
  * Handle save profile button click
  */
-async function handleSaveProfile(): Promise<void> {
+async function handleSaveProfile(button: HTMLButtonElement): Promise<void> {
     const profileName = await customPrompt('Enter profile name:');
     if (profileName && profileName.trim()) {
-        try {
-            await createProfileDir();
-            const configResult = await acc.printConfig();
-            const config = configResult?.stdout || '';
-            await saveProfileConfig(profileName.trim(), config);
-            printToNotify(`Profile "${profileName}" saved successfully!`);
-        } catch (e) {
-            printToNotify(`Failed to save profile: ${e}`, 'ERROR');
-        }
+        setButtonLoading(button, true);
+        setTimeout(async () => {
+            try {
+                await createProfileDir();
+                const config = buildConfigCommands().join("\n\n");
+                await saveProfileConfig(profileName.trim(), config);
+                logger.printToNotify(`Profile "${profileName}" saved successfully!`);
+            } catch (e) {
+                logger.printToNotify(`Failed to save profile: ${e}`, 'ERROR');
+            } finally {
+                setButtonLoading(button, false);
+            }
+        }, 0);
     }
 }
 
 /**
  * Handle load profile button click
  */
-async function handleLoadProfile(): Promise<void> {
+async function handleLoadProfile(button: HTMLButtonElement): Promise<void> {
+    ///todo 这里改成select 选择
     const profileName = await customPrompt('Enter profile name to load:');
     if (profileName && profileName.trim()) {
-        try {
-            const profileResult = await loadProfileConfig(profileName.trim());
-            const profileConfig = profileResult?.stdout || '';
-            const lines = profileConfig.split('\n').filter((l: string) => l.trim() && l.includes('='));
-
-            for (const line of lines) {
-                await acc.setConfig(line.trim());
-            }
-
-            await loadCurrentConfig();
-            printToNotify(`Profile "${profileName}" loaded successfully!`);
-
+        setButtonLoading(button, true);
+        setTimeout(async () => {
             try {
-                await acc.restartAccd();
+                const profileResult = await loadProfileConfig(profileName.trim());
+                if (profileResult.errno === 0 && profileResult.stdout) {
+                    const configMap = parseConfig(profileResult.stdout);
+                    // Apply config values to UI elements
+                    for (const mapping of CONFIG_MAPPINGS) {
+                        const el = $(mapping.elementName);
+                        if (el) {
+                            (el as HTMLInputElement | HTMLSelectElement).value = configMap[mapping.configName] || '';
+                        }
+                    }
+                    logger.printToNotify(`Profile "${profileName}" loaded successfully!`);
+                }
+                else{
+                    logger.printToNotify(`Failed to load profile: ${profileResult.stderr}`, 'ERROR');
+                }
+
             } catch (e) {
-                printToConsole(`Could not restart accd: ${e}`, 'ERROR');
+                logger.printToNotify(`Failed to load profile: ${e}`, 'ERROR');
+            } finally {
+                setButtonLoading(button, false);
             }
-        } catch (e) {
-            printToNotify(`Failed to load profile: ${e}`, 'ERROR');
-        }
+        }, 0);
     }
 }
 

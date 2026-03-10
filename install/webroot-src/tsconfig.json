@@ -17,9 +17,6 @@
     "allowJs": true,
     "checkJs": true,
     "baseUrl": ".",
-    "paths": {
-      "@/*": ["./*"]
-    }
   },
   "include": [
     "**/*.ts",

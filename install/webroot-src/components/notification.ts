@@ -5,7 +5,7 @@ setNotificationListener((message, level) => {
     const errorBox = $('error-display');
     if (!errorBox) return;
     errorBox.textContent = message;
-    errorBox.className = `error-box ${level}`;
+    errorBox.className = `error-box ${level.toLowerCase()}`;
     errorBox.style.display = 'block';
     setTimeout(hideNotification, 5000);
 })

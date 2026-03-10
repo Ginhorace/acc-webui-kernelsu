@@ -1,20 +1,5 @@
-import { exec as ksuExec, spawn as ksuSpawn, exit } from 'kernelsu';
+import * as kernelsu from 'kernelsu';
 
-/**
- * 日志打印函数类型
- */
-type LogPrinter = (message: string, level?: string) => void | Promise<void>;
-
-let logPrinter: LogPrinter | undefined;
-
-/**
- * 设置日志打印器
- * @param printer 日志打印函数
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function setLogPrinter(printer: ((message: string, level?: any) => void | Promise<void>) | undefined) {
-    logPrinter = printer;
-}
 
 /**
  * 执行结果（与 kernelsu 包类型一致）
@@ -61,22 +46,9 @@ async function exec(command: string, args: string[] = []): Promise<ExecResults> 
         return { errno: -1, stdout: '', stderr: 'KernelSU API not available' };
     }
     const fullCmd = buildCommand(command, args);
-    return await ksuExec(fullCmd);
+    return await kernelsu.exec(fullCmd);
 }
-/**
- * 执行指令并返回完整结果（底层 API）
- * @param command 命令
- * @param args 参数数组
- * @returns 完整的执行结果，包含 errno、stdout、stderr
- */
-async function execAndLog(command: string, args: string[] = []): Promise<ExecResults> {
-    if (!checkKSUEnvironment()) {
-        return { errno: -1, stdout: '', stderr: 'KernelSU API not available' };
-    }
-    const fullCmd = buildCommand(command, args);
-    logPrinter?.(`[exec] ${fullCmd}`, 'DEBUG');
-    return await ksuExec(fullCmd);
-}
+
 /**
  * Spawn 选项
  */
@@ -97,19 +69,11 @@ interface SpawnOptions {
  * @param args 参数数组
  * @param options 选项
  * @returns AbortController 用于取消进程
- * @example
- * ```ts
- * const controller = runSpawn('logcat', [], {
- *   onStdout: (data) => console.log('out:', data),
- *   onStderr: (data) => console.error('err:', data),
- *   onExit: (code) => console.log('exit:', code),
- * });
  *
  * // 取消进程
- * setTimeout(() => controller.abort(), 3000);
- * ```
+ * exit();
  */
-function runSpawn(
+function spawn(
     command: string,
     args: string[] = [],
     options: SpawnOptions = {}
@@ -125,15 +89,14 @@ function runSpawn(
     }
 
     const fullCmd = buildCommand(command, args);
-    logPrinter?.(`[spawn] ${fullCmd}`, 'DEBUG');
-    const child = ksuSpawn(fullCmd);
+    const child = kernelsu.spawn(fullCmd);
 
     let stopped = false;
 
     const stop = () => {
         if (!stopped) {
             stopped = true;
-            exit();
+            kernelsu.exit();
         }
     };
 
@@ -171,5 +134,5 @@ function runSpawn(
     return abortController;
 }
 
-export { checkKSUEnvironment, exec,execAndLog, runSpawn, setLogPrinter };
+export { checkKSUEnvironment, exec, spawn, buildCommand };
 export type { ExecResults, SpawnOptions };

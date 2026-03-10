@@ -1,10 +1,10 @@
 // Status Tab - System status and battery information
 import * as logger from '../config/logger';
 import * as acc from '../commands/acc';
-import { printToNotify } from '../config/logger';
+
 import { customPrompt } from './dialog';
 import { customConfirm } from './confirm';
-import { $, setOnClick, setButtonLoading, updateStatusClass, toggleButton, ButtonWithAbort } from './base';
+import { $, setOnClick, setButtonLoading, updateStatusClass, activateWithAbort, ButtonWithAbort } from './base';
 
 // Cached DOM elements
 const elements = {
@@ -41,7 +41,6 @@ function initializeStatusTab(): void {
     setOnClick('refresh-btn', handleRefresh);
     setOnClick('restart-btn', handleRestart);
     setOnClick('stop-btn', handleStop);
-    setOnClick('start-btn', handleStart);
     setOnClick('detailed-info-btn', handleDetailedInfo);
 
     // Test switches modal events
@@ -85,7 +84,7 @@ async function updateStatus(): Promise<void> {
 
         logger.printToConsole('Status refreshed');
     } catch (e) {
-        printToNotify(`Status load failed: ${e}`, 'ERROR');
+        logger.printToNotify(`Status load failed: ${e}`, 'ERROR');
         const el = elements.daemonStatus();
         if (el) {
             el.textContent = 'Stop';
@@ -152,15 +151,34 @@ async function updateDaemonStatus(): Promise<boolean> {
 
 
 /**
+ * Handle refresh button click - toggle auto refresh
+ */
+function handleRefresh(button: ButtonWithAbort): void {
+    activateWithAbort(
+        button,
+        async (btn) => {
+            btn.textContent = 'Refreshing';
+            logger.printToNotify('Auto refresh started (10s interval)');
+            const controller = new AbortController();
+            const intervalId = setInterval(updateStatus, 10000);
+            controller.signal.addEventListener('abort', () => {
+                clearInterval(intervalId);
+                btn.textContent = 'Refresh Status';
+                logger.printToNotify('Auto refresh stopped');
+            });
+            return controller;
+        }
+    );
+}
+/**
  * Handle battery health check
  */
 async function handleBatteryHealth(button: HTMLButtonElement): Promise<void> {
-    try {
+    ///当没有输入数字时，其实没有自动检测，如果想检测可以到/sys/class/power_supply/*/charge_full_design，或者是/sys/class/power_supply/battery/uevent，找到POWER_SUPPLY_CHARGE_FULL_DESIGN 结果值/1000就是
+    const mAh = await customPrompt('Enter battery capacity in mAh (leave empty to auto-detect):');
+    if (mAh !== null) {
         setButtonLoading(button, true);
-        ///当没有输入数字时，其实没有自动检测，如果想检测可以到/sys/class/power_supply/*/charge_full_design，或者是/sys/class/power_supply/battery/uevent，找到POWER_SUPPLY_CHARGE_FULL_DESIGN 结果值/1000就是
-        const mAh = await customPrompt('Enter battery capacity in mAh (leave empty to auto-detect):');
-        if (mAh !== null) {
-            const result = await acc.printHealth(mAh);
+        acc.printHealth(mAh).then((result => {
             if (result.errno !== 0) {
                 logger.printToConsole(`acc -H error:\n${result.stderr}`);
                 return;
@@ -170,13 +188,13 @@ async function handleBatteryHealth(button: HTMLButtonElement): Promise<void> {
             if (span) {
                 span.textContent = healthValue;
                 updateStatusClass(span, true);
-                printToNotify('Battery health: ' + healthValue);
+                logger.printToNotify('Battery health: ' + healthValue);
             }
-        }
-    } catch (e) {
-        printToNotify(`Battery health check failed: ${e}`, 'ERROR');
-    } finally {
-        setButtonLoading(button, false);
+        })).catch((e => {
+            logger.printToNotify(`Battery health check failed: ${e}`, 'ERROR');
+        })).finally(() => {
+            setButtonLoading(button, false);
+        });
     }
 }
 
@@ -187,41 +205,37 @@ async function handleBatteryHealth(button: HTMLButtonElement): Promise<void> {
 async function handleDisableCharging(button: ButtonWithAbort): Promise<void> {
     let enableCharging = $('enable-charging-btn') as HTMLButtonElement;
     let forceCharging = $('force-charge-btn') as HTMLButtonElement;
-    toggleButton(
+    activateWithAbort(
         button,
         async (btn) => {
             // 未激活时弹出 prompt
             const input = await customPrompt('Disable charging until battery level reaches (% or mV) or for duration (e.g., 1h, 30m):', '70%');
             if (!input || !input.trim()) return null;
             const content = `Disable until ${input.trim()}`;
-            if (enableCharging) enableCharging.disabled = true;
-            if (forceCharging) forceCharging.disabled = true;
+            if (enableCharging) enableCharging.style.visibility = 'hidden';
+            if (forceCharging) forceCharging.style.visibility = 'hidden';
             btn.textContent = content;
             logger.printToNotify(content);
             const abortController = acc.disableChargingSpawn(input, {
                 onStdout: (data) => logger.printToConsole(data),
                 onStderr: (data) => logger.printToConsole(data, 'ERROR'),
                 onExit: (code) => {
-                    logger.printToNotify(`Disable charging exited with code: ${code}`);
+                    logger.printToConsole(`Disable charging exited with code: ${code}`);
                 },
                 onError: (err) => {
-                    printToNotify(`Disable charging error: ${err}`, 'ERROR');
+                    logger.printToNotify(`Disable charging error: ${err}`, 'ERROR');
                 }
             });
             abortController.signal.addEventListener('abort', () => {
                 if (btn._abortController === abortController) {
                     btn._abortController = null;
                     btn.textContent = 'Disable charging';
-                    if (enableCharging) enableCharging.disabled = false;
-                    if (forceCharging) forceCharging.disabled = false;
+                    if (enableCharging) enableCharging.style.visibility = 'visible';
+                    if (forceCharging) forceCharging.style.visibility = 'visible';
                     logger.printToNotify('Disable charging stopped');
                 }
             });
             return abortController;
-        },
-        (btn) => {
-            btn.textContent = 'Disable charging';
-            logger.printToNotify('Disable charging stopped');
         }
     );
 
@@ -233,40 +247,36 @@ async function handleDisableCharging(button: ButtonWithAbort): Promise<void> {
 async function handleEnableCharging(button: ButtonWithAbort): Promise<void> {
     let disableCharging = $('disable-charging-btn') as HTMLButtonElement;
     let forceCharging = $('force-charge-btn') as HTMLButtonElement;
-    toggleButton(
+    activateWithAbort(
         button,
         async (btn) => {
             const input = await customPrompt('Enable charging to battery level (%) or for duration (e.g., 30m):', '80%');
             if (!input || !input.trim()) return null;
             const content = `Enable until ${input.trim()}`;
-            if (disableCharging) disableCharging.disabled = true;
-            if (forceCharging) forceCharging.disabled = true;
+            if (disableCharging) disableCharging.style.visibility = 'hidden';
+            if (forceCharging) forceCharging.style.visibility = 'hidden';
             btn.textContent = content;
             logger.printToNotify(content);
             const abortController = acc.enableChargingSpawn(input, {
                 onStdout: (data) => logger.printToConsole(data),
                 onStderr: (data) => logger.printToConsole(data, 'ERROR'),
                 onExit: (code) => {
-                    logger.printToNotify(`Enable charging exited with code: ${code}`);
+                    logger.printToConsole(`Enable charging exited with code: ${code}`);
                 },
                 onError: (err) => {
-                    printToNotify(`Enable charging error: ${err}`, 'ERROR');
+                    logger.printToNotify(`Enable charging error: ${err}`, 'ERROR');
                 }
             });
             abortController.signal.addEventListener('abort', () => {
                 if (btn._abortController === abortController) {
                     btn._abortController = null;
                     btn.textContent = 'Enable charging';
-                    if (disableCharging) disableCharging.disabled = false;
-                    if (forceCharging) forceCharging.disabled = false;
+                    if (disableCharging) disableCharging.style.visibility = 'visible';
+                    if (forceCharging) forceCharging.style.visibility = 'visible';
                     logger.printToNotify('Enable charging stopped');
                 }
             });
             return abortController;
-        },
-        (btn) => {
-            btn.textContent = 'Enable charging';
-            logger.printToNotify('Enable charging stopped');
         }
     );
 }
@@ -277,14 +287,14 @@ async function handleEnableCharging(button: ButtonWithAbort): Promise<void> {
 async function handleForceCharge(button: ButtonWithAbort): Promise<void> {
     let disableCharging = $('disable-charging-btn') as HTMLButtonElement;
     let enableCharging = $('enable-charging-btn') as HTMLButtonElement;
-    toggleButton(
+    activateWithAbort(
         button,
         async (btn) => {
             const input = await customPrompt('Force charge to battery level (%) or leave empty for 100%:', '100');
             if (input === null) return null;
             const content = `Force charging to ${input.trim() || '100%'}`;
-            if (disableCharging) disableCharging.disabled = true;
-            if (enableCharging) enableCharging.disabled = true;
+            if (disableCharging) disableCharging.style.visibility = 'hidden';
+            if (enableCharging) enableCharging.style.visibility = 'hidden';
             btn.textContent = content;
             logger.printToNotify(content);
             let result = await acc.forceCharging();
@@ -294,101 +304,65 @@ async function handleForceCharge(button: ButtonWithAbort): Promise<void> {
                     if (btn._abortController === abortController) {
                         btn._abortController = null;
                         btn.textContent = 'Force charge';
-                        if (disableCharging) disableCharging.disabled = false;
-                        if (enableCharging) enableCharging.disabled = false;
+                        if (disableCharging) disableCharging.style.visibility = 'visible';
+                        if (enableCharging) enableCharging.style.visibility = 'visible';
                         logger.printToNotify('Force charge stopped');
+                        //todo top accd then delete $TMPDIR/.acc-f-config
+                        acc.restartAccdSpawn({
+                            onExit: () => updateStatus()
+                        });
                     }
                 });
                 return abortController;
             }
             else return null;
-        },
-        async (btn) => {
-            await acc.restartAccd();
-            btn.textContent = 'Force charge';
-            logger.printToNotify('Force charge stopped');
         }
     );
 }
 
-/**
- * Handle reset battery stats
- */
-async function handleResetBatteryStats(): Promise<void> {
-    if (await customConfirm('Are you sure you want to reset battery statistics?')) {
-        try {
-            const result = await acc.resetStats();
-            const resultStr = result?.stdout || '';
-            if (resultStr.trim() === '✅') {
-                printToNotify('Battery statistics reset successfully');
-            } else {
-                printToNotify('Battery statistics reset: ' + resultStr.trim());
-            }
-            await updateStatus();
-        } catch (e) {
-            printToNotify(`Reset battery stats failed: ${e}`, 'ERROR');
-        }
-    }
-}
 
 
 
-/**
- * Handle refresh button click - toggle auto refresh
- */
-function handleRefresh(button: ButtonWithAbort): void {
-    toggleButton(
-        button,
-        async (btn) => {
-            btn.textContent = 'Refreshing';
-            logger.printToNotify('Auto refresh started (10s interval)');
-            const controller = new AbortController();
-            const intervalId = setInterval(updateStatus, 10000);
-            controller.signal.addEventListener('abort', () => clearInterval(intervalId));
-            return controller;
-        },
-        (btn) => {
-            btn.textContent = 'Refresh Status';
-            logger.printToNotify('Auto refresh stopped');
-        }
-    );
-}
 
 /**
  * Handle restart accd
  */
-async function handleRestart(): Promise<void> {
-    try {
-        await acc.restartAccd();
-        await updateStatus();
-    } catch (e) {
-        printToNotify(`Restart failed: ${e}`, 'ERROR');
-    }
+function handleRestart(button: ButtonWithAbort): void {
+    setButtonLoading(button, true);
+    acc.restartAccdSpawn({
+        onExit: (code) => {
+            logger.printToConsole(`Restart accd exited with code: ${code}`);
+            if (code === 0) {
+                logger.printToNotify('accd restarted successfully');
+            } else {
+                logger.printToNotify(`accd restart failed with code: ${code}`, 'ERROR');
+            }
+            setButtonLoading(button, false);
+            updateStatus();
+        },
+    });
+
 }
 
 /**
  * Handle stop accd
  */
-async function handleStop(): Promise<void> {
-    try {
-        await acc.stopAccd();
-        await updateStatus();
-    } catch (e) {
-        printToNotify(`Stop failed: ${e}`, 'ERROR');
-    }
+function handleStop(button: HTMLButtonElement): void {
+    setButtonLoading(button, true);
+    acc.stopAccdSpawn({
+        onExit: (code) => {
+            logger.printToConsole(`Stop accd exited with code: ${code}`);
+            if (code === 0) {
+                logger.printToNotify('accd stopped successfully');
+            } else {
+                logger.printToNotify(`accd stop failed with code: ${code}`, 'ERROR');
+            }
+            setButtonLoading(button, false);
+            updateStatus();
+        },
+    });
 }
 
-/**
- * Handle start accd
- */
-async function handleStart(): Promise<void> {
-    try {
-        await acc.startAccd();
-        await updateStatus();
-    } catch (e) {
-        printToNotify(`Start failed: ${e}`, 'ERROR');
-    }
-}
 
 /**
  * Handle detailed info toggle
@@ -405,13 +379,34 @@ async function handleDetailedInfo(button: HTMLButtonElement): Promise<void> {
             button.textContent = 'Hide Detailed Info';
             logger.printToConsole('Detailed battery info displayed');
         } catch (e) {
-            printToNotify(`Failed to get detailed info: ${e}`, 'ERROR');
+            logger.printToNotify(`Failed to get detailed info: ${e}`, 'ERROR');
         }
     } else if (panel) {
         panel.style.display = 'none';
         button.textContent = 'Detailed Battery Info';
     }
 }
+
+/**
+ * Handle reset battery stats
+ */
+async function handleResetBatteryStats(): Promise<void> {
+    if (await customConfirm('Are you sure you want to reset battery statistics?')) {
+        try {
+            const result = await acc.resetStats();
+            const resultStr = result?.stdout || '';
+            if (resultStr.trim() === '✅') {
+                logger.printToNotify('Battery statistics reset successfully');
+            } else {
+                logger.printToNotify('Battery statistics reset: ' + resultStr.trim());
+            }
+            await updateStatus();
+        } catch (e) {
+            logger.printToNotify(`Reset battery stats failed: ${e}`, 'ERROR');
+        }
+    }
+}
+
 /**
  * Handle test switches button click
  */
@@ -446,15 +441,14 @@ function handleRunTestSwitches(runBtn: HTMLButtonElement): void {
     runBtn.style.display = 'none';
 
     if (outputElement) {
-        outputElement.textContent = 'Starting switch test...\n\n';
 
         testSwitchesAbortController = acc.testSwitch({
             onStdout: (data) => {
-                outputElement.textContent += data;
+                outputElement.textContent += data+'\n\n';
                 outputElement.scrollTop = outputElement.scrollHeight;
             },
             onStderr: (data) => {
-                outputElement.textContent += data;
+                outputElement.textContent += data+'\n\n';
                 outputElement.scrollTop = outputElement.scrollHeight;
             },
             onExit: (code) => {
@@ -494,6 +488,5 @@ function handleStopTestSwitches(stopBtn: HTMLButtonElement): void {
 
 
 export {
-
     initializeStatusTab,
 };

@@ -1,7 +1,7 @@
 // Status Tab - System status and battery information
 import * as logger from '../config/logger';
 import * as acc from '../commands/acc';
-import { $ } from './base';
+import { $, parseConfig } from './base';
 
 /**
  * Load config for display in profile-tab
@@ -10,16 +10,9 @@ async function loadConfigDisplay(): Promise<void> {
     try {
         const result = await acc.printConfig();
         const config = result?.stdout || '';
-        const configLines = config.split('\n').filter((l: string) => l.trim());
-        const configMap: Record<string, string> = {};
-
-        configLines.forEach((line: string) => {
-            const match = line.match(/^([^=]+)=(.*)$/);
-            if (match) {
-                configMap[match[1].trim()] = match[2].trim();
-            }
-        });
-
+        const configMap = parseConfig(config);
+        
+        // todo 从文件中读取config -s|--set file
         const chargeLimit = configMap.pause_capacity || configMap.capacity || '-';
         const resumeCharge = configMap.resume_capacity || '-';
         const pauseAt = `${chargeLimit}%`;

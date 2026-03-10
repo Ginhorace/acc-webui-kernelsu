@@ -1,5 +1,5 @@
-import { ExecResults,execAndLog } from '../env/ksu';
-import { config } from '../config/logger';
+import {  ExecResults } from 'env/ksu';
+import { execAndLog, config } from '../config/logger';
 
 const { dataDir } = config;
 
@@ -14,9 +14,16 @@ async function showReadme(): Promise<ExecResults> {
 async function createProfileDir(): Promise<ExecResults> {
     return execAndLog('mkdir', ['-p', `${dataDir}/profiles`]);
 }
-
-async function saveProfileConfig(profileName: string, config: string): Promise<ExecResults> {
-    return execAndLog('sh', ['-c', `echo '${config.replace(/'/g, "'\\''")}' > ${dataDir}/profiles/${profileName}.conf`]);
+/**
+ * 保存的是数据解析过print current config到前端的情况，所以与config.txt和 $TMPDIR/.config不同
+ * @param profileName 
+ * @param configContent 
+ * @returns 
+ */
+async function saveProfileConfig(profileName: string, configContent: string): Promise<ExecResults> {
+    
+    const escapedConfig = configContent.replace(/'/g, "'\\''");
+    return execAndLog(`printf '%s\\n' '${escapedConfig}' > ${dataDir}/profiles/${profileName}.conf`);
 }
 
 async function loadProfileConfig(profileName: string): Promise<ExecResults> {

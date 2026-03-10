@@ -1,35 +1,36 @@
 // Logs Tab - Log viewing and management
 import * as logger from '../config/logger';
 import * as acc from '../commands/acc';
-import { printToNotify } from '../config/logger';
-import { setOnClick } from './base';
 
-
+import { setOnClick, setButtonLoading } from './base';
 
 /**
  * Handle export logs button click
  */
-async function handleExportLogs(): Promise<void> {
-    try {
-        await acc.exportLogs();
-        printToNotify('Logs exported to /sdcard/Download/acc-logs-*.tgz');
-    } catch (e) {
-        printToNotify(`Export logs failed: ${e}`,'ERROR');
-    }
+function handleExportLogs(button: HTMLButtonElement): void {
+    setButtonLoading(button, true);
+    acc.exportLogsSpawn({
+        onExit: (code) => {
+            // acc.sh的问题导致成功导出压缩包却返回1
+            logger.printToNotify(`Logs exported to /sdcard/Download/acc-logs-*.tgz with code: ${code}`);
+            setButtonLoading(button, false);
+        },
+    });
 }
 
 /**
  * Handle clear logs button click
  */
 async function handleClearLogs(): Promise<void> {
-    try {
-        const success = await logger.clearLogs();
-        if (!success){
-            printToNotify('Clear logs failed','ERROR');
-        }
-    } catch (e) {
-        printToNotify(`Clear logs error: ${e}`,'ERROR');
+    //todo loading
+    const result = await logger.clearLogs();
+    if (result.errno === 0) {
+        logger.printToNotify('Clear logs', 'INFO');
     }
+    else {
+        logger.printToNotify(`Clear logs failed: ${result.stderr}`, 'ERROR');
+    }
+
 }
 //todo 界面上添加自动刷新logs的选项
 
@@ -41,4 +42,4 @@ function initializeLogsTab(): void {
     setOnClick('clear-logs-btn', handleClearLogs);
 }
 
-export {  initializeLogsTab };
+export { initializeLogsTab };

@@ -2,15 +2,14 @@ import { checkKSUEnvironment } from '../env/ksu';
 import * as logger from '../config/logger';
 import { checkId } from '../commands/command';
 import * as acc from '../commands/acc';
-import { printToNotify } from '../config/logger';
-import { printToConsole } from '../config/logger';
-import { $,  updateStatusClass } from './base';
+
+import { $, updateStatusClass } from './base';
 // Import tab modules
-import {  initializeStatusTab } from './status';
-import {  initializeLogsTab } from './logs';
+import { initializeStatusTab } from './status';
+import { initializeLogsTab } from './logs';
 import { initializeMaintenanceTab } from './maintenance';
 import { initializeSettingsTab } from './settings';
-import {initializeDebugMode} from './console';
+import { initializeDebugMode } from './console';
 import { loadConfigDisplay } from './profile';
 import './notification'; // side effect: register notification listener
 
@@ -18,53 +17,68 @@ import './notification'; // side effect: register notification listener
  * Verify system requirements
  */
 async function verifySystem(): Promise<void> {
-    printToConsole('Starting system verification...');
+    //todo 要改
+    logger.printToConsole('Starting system verification...');
     (window as Record<string, unknown>).verifySystem = verifySystem;
 
-    ($('root-status') as HTMLElement).textContent = 'Checking...';
-    ($('acc-install-status') as HTMLElement).textContent = 'Checking...';
+    const rootStatus = $('root-status');
+    const accInstallStatus = $('acc-install-status');
+
+    if (rootStatus) rootStatus.textContent = 'Checking...';
+    if (accInstallStatus) accInstallStatus.textContent = 'Checking...';
 
     try {
-        printToConsole('Checking root access...');
+        logger.printToConsole('Checking root access...');
         const idResult = await checkId();
         const idOutput = idResult?.stdout || '';
-        printToConsole(`Root check result: ${idOutput}`);
+        logger.printToConsole(`Root check result: ${idOutput}`);
 
-        ($('root-status') as HTMLElement).textContent =
-            idOutput.includes('uid=0') ? 'Root access OK' : 'Root access failed';
-        updateStatusClass($('root-status'), idOutput.includes('uid=0'));
+        if (rootStatus) {
+            rootStatus.textContent =
+                idOutput.includes('uid=0') ? 'Root access OK' : 'Root access failed';
+        }
+        updateStatusClass(rootStatus, idOutput.includes('uid=0'));
 
         if (!idOutput.includes('uid=0')) {
             hideLoadingOverlay();
             throw new Error('Root access not granted');
         }
 
-        printToConsole('Root access OK, checking ACC installation...');
+        logger.printToConsole('Root access OK, checking ACC installation...');
         const accPath = acc.getAccPath();
         const version = acc.getAccVersion();
-        ($('acc-install-status') as HTMLElement).textContent = `Found at ${accPath}`;
-        ($('acc-version') as HTMLElement).textContent = version;
-        updateStatusClass($('acc-install-status'), true);
-        updateStatusClass($('acc-version'), true);
+        if (accInstallStatus) accInstallStatus.textContent = `Found at ${accPath}`;
+        const accVersionEl = $('acc-version');
+        if (accVersionEl) accVersionEl.textContent = version;
+        updateStatusClass(accInstallStatus, true);
+        updateStatusClass(accVersionEl, true);
 
-        ($('control-panel') as HTMLElement).style.display = 'block';
-        ($('profile-panel') as HTMLElement).style.display = 'block';
-        ($('log-panel') as HTMLElement).style.display = 'block';
-        ($('maintenance-panel') as HTMLElement).style.display = 'block';
-        ($('settings-panel') as HTMLElement).style.display = 'block';
+        const controlPanel = $('control-panel');
+        const profilePanel = $('profile-container');
+        const logPanel = $('log-panel');
+        const maintenancePanel = $('maintenance-panel');
+        const settingsPanel = $('settings-panel');
 
-        printToConsole('Initializing UI (non-blocking)...');
+        if (controlPanel) controlPanel.style.display = 'block';
+        if (profilePanel) profilePanel.style.display = 'block';
+        if (logPanel) logPanel.style.display = 'block';
+        if (maintenancePanel) maintenancePanel.style.display = 'block';
+        if (settingsPanel) settingsPanel.style.display = 'block';
 
-        initializeUI(accPath).catch((e: Error) => {
-            printToNotify(`UI initialization error: ${e}`, 'ERROR');
+        logger.printToConsole('Initializing UI (non-blocking)...');
+
+        initializeUI(accPath).then(()=>{
+            hideLoadingOverlay();
+        }).catch((e: Error) => {
+            logger.printToNotify(`UI initialization error: ${e}`, 'ERROR');
         });
 
-        setTimeout(hideLoadingOverlay, 500);
+        // setTimeout(hideLoadingOverlay, 500);
 
-        printToConsole('System verification completed successfully');
+        logger.printToConsole('System verification completed successfully');
         return;
     } catch (e) {
-        printToNotify(`System verification failed: ${e}`, 'ERROR');
+        logger.printToNotify(`System verification failed: ${e}`, 'ERROR');
         updateStatusClass($('root-status'), false);
         updateStatusClass($('acc-install-status'), false);
         hideLoadingOverlay();
@@ -77,7 +91,7 @@ async function verifySystem(): Promise<void> {
  */
 async function initializeUI(accPath: string): Promise<void> {
     logger.printToFile(`Initializing with ACC path: ${accPath}`);
-
+    //todo 需要把页面初始化和加载数据区分开
     // Initialize all tab modules
     initializeStatusTab();
     initializeLogsTab();
@@ -121,8 +135,8 @@ function handleNavButtonClick(e: Event): void {
         const tab = $(tabId);
         if (tab) tab.classList.add('active');
         //自定义逻辑
-        if(tabId =="profile-tab"){
-           loadConfigDisplay();
+        if (tabId == "profile-tab") {
+            loadConfigDisplay();
         }
     }
     logger.printToConsole(`Switched to tab: ${tabId}`, 'DEBUG');
@@ -143,29 +157,27 @@ function hideLoadingOverlay(): void {
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        initializeMainTabs();
 
         if (!checkKSUEnvironment()) {
-            printToNotify('KernelSU API not available.', 'ERROR');
+            logger.printToNotify('KernelSU API not available.', 'ERROR');
             return;
         }
-        try {
-            await logger.initLogDirectory();
-        } catch (e) {
-            console.error(`Logging initialization failed: ${e}`, 'WARN');
+        const initLogResult=await logger.initLogDirectory()
+        if (initLogResult.errno!==0) {
+            logger.printToNotify(`Logging initialization failed`, 'ERROR');
+            return;
+        }
+        if (!acc.initAccPath()) {
+            logger.printToNotify('ACC binary not found', 'ERROR');
+            return;
         }
         logger.printToFile('WebView starting');
 
-        if (!acc.initAccPath()) {
-            printToConsole('ACC binary not found');
-            return;
-        }
-
+        initializeMainTabs();
         await verifySystem();
-
         // Initialize debug mode toggle
         initializeDebugMode();
     } catch (e) {
-        printToNotify(`Initialization failed: ${e}`, 'ERROR');
+        logger.printToNotify(`Initialization failed: ${e}`, 'ERROR');
     }
 });
