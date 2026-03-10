@@ -2,14 +2,14 @@
 const debugConsole = document.getElementById('debug-console');
 const lastUpdated = document.getElementById('last-updated');
 
-// Enhanced logging system
+// Enhanced logging system. For now will use the default location.
 const logManager = {
-    logDir: '/data/adb/farrukh2002/acc/logs',
-    logFile: '/data/adb/farrukh2002/acc/logs/webview-acc.log',
+    logDir: '/data/adb/vr25/acc-data/logs',
+    logFile: '/data/adb/vr25/acc-data/logs/webview-acc.log',
     maxLogLines: 500,
     logLevel: 'DEBUG',
 
-    ensureLogDirectory: async function() {
+    ensureLogDirectory: async function () {
         try {
             await this.executeCommand(`mkdir -p "${this.logDir}" && chmod 755 "${this.logDir}"`);
             await this.info(`Log directory ensured at ${this.logDir}`);
@@ -20,11 +20,11 @@ const logManager = {
         }
     },
 
-    executeCommand: async function(command) {
+    executeCommand: async function (command) {
         return new Promise((resolve, reject) => {
             if (typeof ksu !== 'undefined' && ksu.exec) {
                 const callback = `log_callback_${Date.now()}`;
-                window[callback] = function(errno, stdout, stderr) {
+                window[callback] = function (errno, stdout, stderr) {
                     delete window[callback];
                     if (errno === 0) {
                         resolve(stdout);
@@ -39,7 +39,7 @@ const logManager = {
         });
     },
 
-    writeLogInternal: async function(level, message) {
+    writeLogInternal: async function (level, message) {
         if (this.shouldLog(level)) {
             try {
                 const timestamp = new Date().toISOString();
@@ -54,17 +54,17 @@ const logManager = {
         return false;
     },
 
-    shouldLog: function(level) {
+    shouldLog: function (level) {
         const levels = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
         return levels.indexOf(level) >= levels.indexOf(this.logLevel);
     },
 
-    debug: function(message) { return this.writeLogInternal('DEBUG', message); },
-    info: function(message) { return this.writeLogInternal('INFO', message); },
-    warn: function(message) { return this.writeLogInternal('WARN', message); },
-    error: function(message) { return this.writeLogInternal('ERROR', message); },
+    debug: function (message) { return this.writeLogInternal('DEBUG', message); },
+    info: function (message) { return this.writeLogInternal('INFO', message); },
+    warn: function (message) { return this.writeLogInternal('WARN', message); },
+    error: function (message) { return this.writeLogInternal('ERROR', message); },
 
-    readLogs: async function() {
+    readLogs: async function () {
         try {
             if (!(await this.ensureLogDirectory())) return "Log directory not accessible";
 
@@ -79,7 +79,7 @@ const logManager = {
 
             let logs = await this.executeCommand(`cat "${this.logFile}"`);
             const lineCount = logs.split('\n').filter(line => line.trim()).length;
-            
+
             if (lineCount > this.maxLogLines) {
                 await this.rotateLogs();
                 logs = await this.executeCommand(`cat "${this.logFile}"`);
@@ -91,7 +91,7 @@ const logManager = {
         }
     },
 
-    rotateLogs: async function() {
+    rotateLogs: async function () {
         try {
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const rotatedFile = `${this.logFile}.${timestamp}`;
@@ -104,7 +104,7 @@ const logManager = {
         }
     },
 
-    clearLogs: async function() {
+    clearLogs: async function () {
         try {
             await this.executeCommand(`echo "" > "${this.logFile}"`);
             await this.info("Logs cleared");
@@ -115,7 +115,7 @@ const logManager = {
         }
     },
 
-    getRecentLogs: async function(lines = 100) {
+    getRecentLogs: async function (lines = 100) {
         try {
             const logs = await this.executeCommand(`tail -n ${lines} "${this.logFile}"`);
             return logs || "No recent logs available";
@@ -128,12 +128,12 @@ const logManager = {
 function debugLog(message, level = 'DEBUG') {
     const timestamp = new Date().toLocaleTimeString();
     const logMessage = `[${timestamp}] ${message}`;
-    
+
     debugConsole.textContent += `${logMessage}\n`;
     debugConsole.scrollTop = debugConsole.scrollHeight;
     lastUpdated.textContent = new Date().toLocaleString();
-    
-    switch(level) {
+
+    switch (level) {
         case 'ERROR': logManager.error(message); break;
         case 'WARN': logManager.warn(message); break;
         case 'INFO': logManager.info(message); break;
@@ -142,10 +142,10 @@ function debugLog(message, level = 'DEBUG') {
 }
 
 const commandExecutor = {
-    exec: function(command, args = [], timeout = 5000) {
+    exec: function (command, args = [], timeout = 10000) {
         return new Promise((resolve, reject) => {
             debugLog(`Executing: ${command} ${args.join(' ')}`, 'DEBUG');
-            
+
             if (typeof ksu !== 'undefined' && ksu.exec) {
                 const callback = `cmd_callback_${Date.now()}`;
                 let timedOut = false;
@@ -154,23 +154,23 @@ const commandExecutor = {
                     delete window[callback];
                     reject(`Command timed out after ${timeout}ms`);
                 }, timeout);
-                
-                window[callback] = function(errno, stdout, stderr) {
+
+                window[callback] = function (errno, stdout, stderr) {
                     if (timedOut) return;
                     clearTimeout(timer);
                     delete window[callback];
-                    
+
                     if (errno === 0) {
                         resolve(stdout);
                     } else {
                         reject(stderr || `Command failed with error ${errno}`);
                     }
                 };
-                
-                const fullCmd = [command, ...args].map(arg => 
+
+                const fullCmd = [command, ...args].map(arg =>
                     arg.includes(' ') ? `"${arg.replace(/"/g, '\\"')}"` : arg
                 ).join(' ');
-                
+
                 try {
                     ksu.exec(fullCmd, callback);
                 } catch (e) {
@@ -184,102 +184,247 @@ const commandExecutor = {
     }
 };
 
-function showError(message) {
+function showError(message, type = 'error') {
     const errorBox = document.getElementById('error-display');
     errorBox.textContent = message;
+    errorBox.className = `error-box ${type}`;
     errorBox.style.display = 'block';
-    debugLog(`ERROR: ${message}`, 'ERROR');
+    debugLog(`${type.toUpperCase()}: ${message}`, 'INFO');
+    setTimeout(hideError, 5000);
 }
 
 function hideError() {
     document.getElementById('error-display').style.display = 'none';
 }
 
+function setButtonLoading(button, loading = true) {
+    if (loading) {
+        button.classList.add('loading');
+        button.disabled = true;
+    } else {
+        button.classList.remove('loading');
+        button.disabled = false;
+    }
+}
+
 function updateStatusClass(element, value) {
-    element.className = 'status-value';
-    if (!value || value.includes('Not running') || value.includes('Disconnected') || value.includes('Error')) {
-        element.classList.add('bad');
-    } else if (value.includes('Running') || value.includes('Connected') || value.includes('OK')) {
-        element.classList.add('good');
-    } else if (value.includes('Warning') || value.includes('Partial')) {
-        element.classList.add('warning');
+    if (!element) return;
+    element.classList.remove('status-good', 'status-bad');
+    const val = value.toString().toLowerCase();
+    if (val.includes('running') || val.includes('ok') || val.includes('charging') || val.includes('uid=0')) {
+        element.classList.add('status-good');
+    } else if (val.includes('error') || val.includes('failed') || val.includes('not') || val.includes('stop')) {
+        element.classList.add('status-bad');
+    }
+}
+
+function hideLoadingOverlay() {
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) {
+        overlay.style.opacity = '0';
+        overlay.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => {
+            overlay.style.display = 'none';
+        }, 300);
+    }
+}
+
+let globalAccPath = null;
+
+async function updateStatus() {
+    if (!globalAccPath && window.ACC && window.ACC.accPath) globalAccPath = window.ACC.accPath;
+    if (!globalAccPath) {
+        debugLog("ACC path not available for status update", 'ERROR');
+        return;
+    }
+
+    try {
+        const output = await commandExecutor.exec(globalAccPath, ['-i']);
+        debugLog(`Raw acc -i output:\n${output}`, 'DEBUG');
+
+        const lines = (output || '').split('\n').filter(line => line.trim());
+        const status = {};
+
+        // Parse battery info output more reliably
+        lines.forEach(line => {
+            // Try colon/equals separator first (key: value or key=value)
+            let m = line.match(/^\s*([a-zA-Z0-9_\-]+)\s*[:=]\s*(.+)$/);
+            if (m) {
+                status[m[1]] = m[2].trim();
+                return;
+            }
+
+            // Fallback to space separator (key value)
+            const parts = line.trim().split(/\s+/);
+            if (parts.length >= 2) {
+                status[parts[0]] = parts.slice(1).join(' ');
+            }
+        });
+        // Update daemon status
+        try {
+            // Quick check without blocking too long
+            const running = await commandExecutor.exec('pgrep', ['-f', 'accd'], 3000);
+            document.getElementById('daemon-status').textContent = 'Running';
+        } catch (e) {
+            document.getElementById('daemon-status').textContent = 'Stop';
+        }
+        updateStatusClass(document.getElementById('daemon-status'), document.getElementById('daemon-status').textContent);
+
+        // Battery level - extract from "level 75%" format or raw number
+        let batteryLevel = '0';
+        if (status.level) {
+            batteryLevel = status.level.toString().replace('%', '').replace(/[^0-9]/g, '');
+        } else if (status.capacity) {
+            batteryLevel = status.capacity.toString().replace('%', '').replace(/[^0-9]/g, '');
+        }
+
+        document.getElementById('battery-level').textContent = batteryLevel + '%';
+        const batteryBar = document.getElementById('battery-bar');
+        if (batteryBar) {
+            batteryBar.style.setProperty('--battery-level', batteryLevel + '%');
+        }
+
+        // Charging status
+        document.getElementById('charging-status').textContent = status.status || '-';
+        updateStatusClass(document.getElementById('charging-status'), document.getElementById('charging-status').textContent);
+
+        // Current - handle "1.23A" format
+        const currentNow = status.current_now || '-';
+        document.getElementById('current-limit').textContent = currentNow;
+
+        // Temperature - handle "28℃" format
+        const tempElement = document.getElementById('temperature');
+        if (tempElement) {
+            tempElement.textContent = status.temp || '-';
+        }
+
+        // Power - handle "5.35W" format
+        const powerElement = document.getElementById('power-display');
+        if (powerElement) {
+            powerElement.textContent = status.power_now || '-';
+        }
+
+        // Charge type (optional - only when power supply connected)
+        const chargeTypeElement = document.getElementById('charge-type');
+        if (chargeTypeElement) {
+            chargeTypeElement.textContent = status.charge_type || 'N/A';
+        }
+
+        // Real level (optional - only when capacity_mask enabled)
+        const realLevelElement = document.getElementById('real-level');
+        if (realLevelElement) {
+            realLevelElement.textContent = status.real_level || 'N/A';
+        }
+
+
+
+        hideError();
+        await logManager.info("Status refreshed");
+    } catch (e) {
+        showError(`Status load failed: ${e}`, 'error');
+        document.getElementById('daemon-status').textContent = 'Stop';
+        updateStatusClass(document.getElementById('daemon-status'), 'Stop');
+        await logManager.error(`Status error: ${e}`);
     }
 }
 
 async function verifySystem() {
+    console.log("Starting system verification...");
+
+    // Show loading state immediately
+    document.getElementById('root-status').textContent = 'Checking...';
+    document.getElementById('acc-install-status').textContent = 'Checking...';
+
     try {
+        console.log("Checking root access...");
+        //执行命令id，获取uid=0(root) gid=0(root) groups=0(root) context=u:r:magisk:s0
+
         const idResult = await commandExecutor.exec('id');
-        document.getElementById('root-status').textContent = 
+        console.log("Root check result:", idResult);
+
+        document.getElementById('root-status').textContent =
             idResult.includes('uid=0') ? 'Root access OK' : 'Root access failed';
         updateStatusClass(document.getElementById('root-status'), idResult);
-        
-        if (!idResult.includes('uid=0')) throw new Error("Root access not granted");
-        
-        let accPath = 'acc';
-        try {
-            const version = await commandExecutor.exec(accPath, ['-v']);
-            document.getElementById('acc-install-status').textContent = 'Found in PATH';
-            document.getElementById('acc-version').textContent = version.trim();
-            updateStatusClass(document.getElementById('acc-install-status'), 'OK');
-            updateStatusClass(document.getElementById('acc-version'), version);
-            
-            document.getElementById('control-panel').style.display = 'block';
-            document.getElementById('config-panel').style.display = 'block';
-            document.getElementById('log-panel').style.display = 'block';
-            
-            await initializeUI(accPath);
-            return;
-        } catch (e) {
-            debugLog(`ACC not in PATH: ${e}`, 'DEBUG');
+
+        if (!idResult.includes('uid=0')) {
+            hideLoadingOverlay();
+            throw new Error("Root access not granted");
         }
-        
+
+
+        console.log("Root access OK, checking ACC installation...");
         const ACC_PATHS = [
+            'acc',
             '/data/adb/vr25/acc/acc',
-            '/data/adb/modules/acc/acc.sh',
             '/dev/acc',
             '/system/bin/acc',
             '/data/adb/vr25/bin/acc'
         ];
-        
         for (const path of ACC_PATHS) {
             try {
+                console.log(`Trying ACC at ${path}...`);
                 const version = await commandExecutor.exec(path, ['-v']);
+                console.log(`ACC found at ${path}, version:`, version);
                 accPath = path;
                 document.getElementById('acc-install-status').textContent = `Found at ${path}`;
                 document.getElementById('acc-version').textContent = version.trim();
                 updateStatusClass(document.getElementById('acc-install-status'), 'OK');
                 updateStatusClass(document.getElementById('acc-version'), version);
-                
+
                 document.getElementById('control-panel').style.display = 'block';
                 document.getElementById('config-panel').style.display = 'block';
                 document.getElementById('log-panel').style.display = 'block';
-                
-                await initializeUI(accPath);
+                document.getElementById('maintenance-panel').style.display = 'block';
+                document.getElementById('settings-panel').style.display = 'block';
+
+                globalAccPath = accPath;
+                console.log("Initializing UI (non-blocking)...");
+
+                // Initialize UI without awaiting - let it load in background
+                initializeUI(accPath).catch(e => {
+                    console.error("UI initialization error:", e);
+                    showError("Some features may not work properly. Try refreshing.", 'warn');
+                });
+
+                // Hide loading overlay after a short delay to ensure UI is visible
+                setTimeout(hideLoadingOverlay, 500);
+
+                console.log("System verification completed successfully");
                 return;
             } catch (e) {
-                debugLog(`Not found at ${path}: ${e}`, 'DEBUG');
+                console.log(`Not found at ${path}: ${e}`);
             }
         }
-        
+
         throw new Error("ACC binary not found");
     } catch (e) {
+        console.error("System verification failed:", e);
         showError(`System verification failed: ${e}`);
         updateStatusClass(document.getElementById('root-status'), 'Failed');
         updateStatusClass(document.getElementById('acc-install-status'), 'Failed');
+        hideLoadingOverlay();
     }
 }
-
+/**
+ * @deprecated 初始化过程中没必要保证accd开启，因为用户是可以手动关闭accd的
+ */
 async function ensureAccdRunning(accPath) {
     try {
-        const running = await commandExecutor.exec('pgrep', ['-f', 'accd']);
-        if (!running.trim()) {
-            debugLog("Starting accd", 'INFO');
-            await commandExecutor.exec(accPath, ['--init']);
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
+        // Quick check without blocking too long
+        const running = await commandExecutor.exec('pgrep', ['-f', 'accd'], 3000);
+        debugLog("accd daemon already running", 'INFO');
     } catch (e) {
-        debugLog(`accd start failed: ${e}`, 'ERROR');
-        throw new Error("Failed to start accd");
+        debugLog(`accd check/start: ${e}`, 'WARN');
+        //返回1表示未找到匹配进程
+        if (e.trim().endsWith(1)) {
+            debugLog("Starting accd daemon", 'INFO');
+            // Start daemon without waiting for full initialization
+            commandExecutor.exec(accPath, ['--init']).catch(e => {
+                debugLog(`accd start warning: ${e}`, 'WARN');
+            });
+            // Give it a moment to start
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
     }
 }
 
@@ -297,109 +442,222 @@ async function loadLogs() {
 
 async function initializeUI(accPath) {
     debugLog(`Initializing with ACC path: ${accPath}`, 'INFO');
-    
-    try {
-        await ensureAccdRunning(accPath);
-    } catch (e) {
-        showError(`Start accd manually: 'su -c "accd --init"`);
-        return;
-    }
 
+    ///不启用是因为用户是可以手动关闭accd的
+    // Don't block UI initialization if daemon check fails
+    // ensureAccdRunning(accPath).catch(e => {
+    //     showError("Daemon may not be running. Some features may not work. Try manually starting accd.", 'warn');
+    // });
+
+    const batteryHealthBtn = document.getElementById('battery-health-btn');
+    const testSwitchesBtn = document.getElementById('test-switches-btn');
+    const disableChargingBtn = document.getElementById('disable-charging-btn');
+    const enableChargingBtn = document.getElementById('enable-charging-btn');
+    const forceChargeBtn = document.getElementById('force-charge-btn');
+    const resetBatteryStatsBtn = document.getElementById('reset-battery-stats-btn');
     const refreshBtn = document.getElementById('refresh-btn');
     const restartBtn = document.getElementById('restart-btn');
     const stopBtn = document.getElementById('stop-btn');
     const startBtn = document.getElementById('start-btn');
     const refreshLogsBtn = document.getElementById('refresh-logs-btn');
+    const exportLogsBtn = document.getElementById('export-logs-btn');
     const clearLogsBtn = document.getElementById('clear-logs-btn');
-    
-    async function loadStatus() {
-        try {
-            const output = await commandExecutor.exec(accPath, ['-i']);
-            debugLog(`Raw acc -i output:\n${output}`, 'DEBUG');
-            
-            // Debug: Log each line of output
-            console.log("Parsing acc -i output lines:");
-            const lines = output.split('\n').filter(line => line.trim());
-            lines.forEach((line, i) => console.log(`${i}: ${line}`));
-            
-            // Parse the output
-            const status = {
-                battery: lines.find(l => l.startsWith('level'))?.split(/\s+/)[1] || '-',
-                charging: lines.find(l => l.startsWith('status'))?.split(/\s+/)[1] || '-',
-                temp: lines.find(l => l.startsWith('temp'))?.split(/\s+/)[1] || '-',
-                current: lines.find(l => l.startsWith('current_now'))?.split(/\s+/)[1] || '-',
-                voltage: lines.find(l => l.startsWith('voltage_now'))?.split(/\s+/)[1] || '-',
-                power: lines.find(l => l.startsWith('power_now'))?.split(/\s+/)[1] || '-'
-            };
+    const upgradeBtn = document.getElementById('upgrade-btn');
+    const uninstallBtn = document.getElementById('uninstall-btn');
+    const rollbackBtn = document.getElementById('rollback-btn');
+    const versionBtn = document.getElementById('version-btn');
+    const detailedInfoBtn = document.getElementById('detailed-info-btn');
+    const readmeBtn = document.getElementById('readme-btn');
+    const logtailBtn = document.getElementById('logtail-btn');
 
-            // Update the UI
-            document.getElementById('daemon-status').textContent = 'Running';
-            document.getElementById('battery-level').textContent = status.battery;
-            document.getElementById('charging-status').textContent = status.charging;
-            document.getElementById('current-limit').textContent = status.current;
-            document.getElementById('voltage-limit').textContent = status.voltage;
-            document.getElementById('temperature').textContent = status.temp;
-
-            // Update power display if element exists
-            const powerElement = document.getElementById('power-display');
-            if (powerElement) {
-                powerElement.textContent = status.power;
-            }
-
-            // Update status classes
-            updateStatusClass(document.getElementById('daemon-status'), 'Running');
-            updateStatusClass(document.getElementById('charging-status'), status.charging);
-            updateStatusClass(document.getElementById('temperature'), status.temp);
-
-            hideError();
-            await logManager.info("Status refreshed");
-        } catch (e) {
-            showError(`Status load failed: ${e}`);
-            document.getElementById('daemon-status').textContent = 'Error';
-            updateStatusClass(document.getElementById('daemon-status'), 'Error');
-            await logManager.error(`Status error: ${e}`);
-        }
-    }
-    
     async function loadConfig() {
         try {
             const config = await commandExecutor.exec(accPath, ['-s']);
-            const configLines = config.split('\n');
-            
-            document.getElementById('charge-limit').textContent = 
-                configLines.find(l => l.includes('capacity')) || '-';
-            document.getElementById('resume-charge').textContent = 
-                configLines.find(l => l.includes('resume')) || '-';
-            document.getElementById('pause-at').textContent = 
-                configLines.find(l => l.includes('pause')) || '-';
+            const configLines = config.split('\n').filter(l => l.trim());
+            const configMap = {};
+
+            configLines.forEach(line => {
+                const match = line.match(/^([^=]+)=(.*)$/);
+                if (match) {
+                    configMap[match[1].trim()] = match[2].trim();
+                }
+            });
+
+            const chargeLimit = configMap.pause_capacity || configMap.capacity || '-';
+            const resumeCharge = configMap.resume_capacity || '-';
+            const pauseAt = `${chargeLimit}%`;
+
+            document.getElementById('charge-limit').textContent = chargeLimit + (chargeLimit !== '-' ? '%' : '');
+            document.getElementById('resume-charge').textContent = resumeCharge + (resumeCharge !== '-' ? '%' : '');
+            document.getElementById('pause-at').textContent = pauseAt;
+
             await logManager.info("Config loaded");
         } catch (e) {
             await logManager.error(`Config error: ${e}`);
         }
     }
     
-    refreshBtn.addEventListener('click', async () => {
-        await logManager.info("Manual refresh");
-        await loadStatus();
-        await loadConfig();
+    batteryHealthBtn.addEventListener('click', async () => {
+        try {
+            setButtonLoading(batteryHealthBtn, true);
+            const mAh = await customPrompt("Enter battery capacity in mAh (leave empty to auto-detect):");
+            const args = ['-H'];
+            if (mAh && mAh.trim()) {
+                args.push(mAh.trim());
+            }
+            const health = await commandExecutor.exec(accPath, args);
+            const healthValue = health.trim();
+            ///当没有输入数字时，其实没有自动检测，如果想检测可以到/sys/class/power_supply/*/charge_full_design，或者是/sys/class/power_supply/battery/uevent，找到POWER_SUPPLY_CHARGE_FULL_DESIGN 结果值/1000就是
+            if (healthValue === '!') {
+                document.getElementById('battery-health').textContent = 'Unable to calculate (missing counter data)';
+                updateStatusClass(document.getElementById('battery-health'), 'Error');
+                showError("Battery health check failed: missing charge counter data", 'error');
+            } else {
+                document.getElementById('battery-health').textContent = healthValue;
+                updateStatusClass(document.getElementById('battery-health'), 'OK');
+                showError("Battery health: " + healthValue, 'success');
+            }
+            await logManager.info("Battery health checked");
+        } catch (e) {
+            showError(`Battery health check failed: ${e}`);
+            document.getElementById('battery-health').textContent = 'Error';
+            updateStatusClass(document.getElementById('battery-health'), 'Error');
+            await logManager.error(`Battery health error: ${e}`);
+        } finally {
+            setButtonLoading(batteryHealthBtn, false);
+        }
     });
-    
+
+    testSwitchesBtn.addEventListener('click', () => {
+        document.getElementById('test-switches-modal').style.display = 'block';
+        //todo 这种默认状态需要在停止测试后改回来
+        document.getElementById('test-switches-output').textContent = 'Click "Run Test" to start testing charging switches...\n\nThis may take several minutes. Ensure charger is plugged in.\n';
+    });
+
+    /**
+     * -d|--disable [#%, #s, #m, #h or #mv (optional)]   Disable charging是用了sleep来实现的，所以要想管理需要手动启停exec
+     */
+    disableChargingBtn.addEventListener('click', async () => {
+        const input = prompt("Disable charging until battery level reaches (% or mV) or for duration (e.g., 1h, 30m):", "70%");
+        if (input && input.trim()) {
+            try {
+                await commandExecutor.exec(accPath, ['-d', input.trim()]);
+                showError("Charging disabled until " + input.trim(), 'success');
+                setTimeout(hideError, 3000);
+                await logManager.info("Charging disabled until " + input.trim());
+                await loadStatus();
+            } catch (e) {
+                showError(`Disable charging failed: ${e}`);
+                await logManager.error(`Disable charging error: ${e}`);
+            }
+        }
+    });
+
+    /**
+     * -e|--enable [#%, #s, #m, #h or #mv (optional)]   Enable charging 同样使用了sleep控制，所以依旧需要手动启停exec
+     */
+    enableChargingBtn.addEventListener('click', async () => {
+        const input = prompt("Enable charging to battery level (%) or for duration (e.g., 30m):", "80%");
+        if (input && input.trim()) {
+            try {
+                await commandExecutor.exec(accPath, ['-e', input.trim()]);
+                showError("Charging enabled to " + input.trim(), 'success');
+                setTimeout(hideError, 3000);
+                await logManager.info("Charging enabled to " + input.trim());
+                await loadStatus();
+            } catch (e) {
+                showError(`Enable charging failed: ${e}`);
+                await logManager.error(`Enable charging error: ${e}`);
+            }
+        }
+    });
+    /**
+     * -f|--force|--full [capacity] [-a] [additional opts/args]   Charge once to a given capacity (default: 100%), without restrictions强制充电是通过更改正在使用的config实现的，所以想要关掉需要重启accd
+     */
+    forceChargeBtn.addEventListener('click', async () => {
+        const capacity = prompt("Force charge to battery level (%) or leave empty for 100%:", "100");
+        if (capacity !== null) { // Allow empty string for default 100%
+            try {
+                const args = ['-f'];
+                if (capacity && capacity.trim()) {
+                    args.push(capacity.trim());
+                }
+                await commandExecutor.exec(accPath, args);
+                const target = capacity && capacity.trim() ? capacity.trim() : "100%";
+                showError("Force charging to " + target + " initiated", 'success');
+                setTimeout(hideError, 3000);
+                await logManager.info("Force charging to " + target);
+                await loadStatus();
+            } catch (e) {
+                showError(`Force charge failed: ${e}`);
+                await logManager.error(`Force charge error: ${e}`);
+            }
+        }
+    });
+    /**
+     * -R|--resetbs   Reset battery stats使用了dumpsys batterystats --reset重置系统的电池统计数据 todoconfirm失效
+     */
+    resetBatteryStatsBtn.addEventListener('click', async () => {
+        if (confirm("Are you sure you want to reset battery statistics?")) {
+            try {
+                const result = await commandExecutor.exec(accPath, ['-R']);
+                if (result.trim() === '✅') {
+                    showError("Battery statistics reset successfully", 'success');
+                } else {
+                    showError("Battery statistics reset: " + result.trim(), 'success');
+                }
+                setTimeout(hideError, 3000);
+                await logManager.info("Battery statistics reset");
+                await loadStatus();
+            } catch (e) {
+                showError(`Reset battery stats failed: ${e}`);
+                await logManager.error(`Reset battery stats error: ${e}`);
+            }
+        }
+    });
+
+    refreshBtn.addEventListener('click', async () => {
+        try {
+            setButtonLoading(refreshBtn, true);
+            await logManager.info("Manual refresh");
+            await loadStatus();
+            await loadConfig();
+            showError("Status refreshed successfully!", 'success');
+            setTimeout(hideError, 2000);
+        } catch (e) {
+            showError(`Refresh failed: ${e}`, 'error');
+        } finally {
+            setButtonLoading(refreshBtn, false);
+        }
+    });
+    /**
+     *  -D|--daemon [start|stop|restart]   Manage daemon
+     *  e.g.,
+     *    acc -D start (alias: accd)
+     *    acc -D restart (alias: accd)
+     *    accd -D stop (alias: "accd.")
+     * todo 添加loading效果
+     * 
+     */
     restartBtn.addEventListener('click', async () => {
         try {
             await logManager.info("Restarting accd");
-            await commandExecutor.exec('pkill', ['-f', 'accd']);
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            await commandExecutor.exec(accPath, ['--init']);
+            // await commandExecutor.exec('pkill', ['-f', 'accd']);
+            // await new Promise(resolve => setTimeout(resolve, 1000));
+            await commandExecutor.exec(accPath, ['-D', 'restart']);
+            showError("Restarting accd","info");
             await loadStatus();
         } catch (e) {
             showError(`Restart failed: ${e}`);
             await logManager.error(`Restart error: ${e}`);
         }
     });
-    
+
     stopBtn.addEventListener('click', async () => {
         try {
-            await commandExecutor.exec('pkill', ['-f', 'accd']);
+            await commandExecutor.exec(accPath, ['-D', 'stop']);
+            // await commandExecutor.exec('pkill', ['-f', 'accd']);
+            showError("accd stopped","info");
             await logManager.info("accd stopped");
             await loadStatus();
         } catch (e) {
@@ -407,10 +665,12 @@ async function initializeUI(accPath) {
             await logManager.error(`Stop error: ${e}`);
         }
     });
-    
+
     startBtn.addEventListener('click', async () => {
         try {
-            await commandExecutor.exec(accPath, ['--init']);
+            await commandExecutor.exec(accPath, ['-D', 'start']);
+            // await commandExecutor.exec(accPath, ['--init']);
+            showError("accd started","info");
             await logManager.info("accd started");
             await loadStatus();
         } catch (e) {
@@ -418,9 +678,21 @@ async function initializeUI(accPath) {
             await logManager.error(`Start error: ${e}`);
         }
     });
-    
+
     refreshLogsBtn.addEventListener('click', loadLogs);
-    
+
+    exportLogsBtn.addEventListener('click', async () => {
+        try {
+            await commandExecutor.exec(accPath, ['-le']);
+            showError("Logs exported to /sdcard/Download/acc-logs-*.tgz", 'success');
+            setTimeout(hideError, 3000);
+            await logManager.info("Logs exported");
+        } catch (e) {
+            showError(`Export logs failed: ${e}`);
+            await logManager.error(`Export logs error: ${e}`);
+        }
+    });
+
     clearLogsBtn.addEventListener('click', async () => {
         try {
             const success = await logManager.clearLogs();
@@ -433,21 +705,352 @@ async function initializeUI(accPath) {
             showError(`Clear logs error: ${e}`);
         }
     });
-    
+
+    upgradeBtn.addEventListener('click', async () => {
+        if (confirm("Check for ACC updates?")) {
+            try {
+                const result = await commandExecutor.exec(accPath, ['-u', '-c', '-n']);
+                if (result.includes('Update available') || /^\d+$/.test(result.trim())) {
+                    if (confirm("Update available. Install now?")) {
+                        await commandExecutor.exec(accPath, ['-u', '-f']);
+                        showError("ACC updated successfully. Please refresh the page.", 'success');
+                    }
+                } else if (result.includes('No update available')) {
+                    showError("ACC is up to date", 'info');
+                } else {
+                    showError("Update check result: " + result.trim(), 'info');
+                }
+                await logManager.info("Checked for updates");
+            } catch (e) {
+                showError(`Update check failed: ${e}`);
+                await logManager.error(`Update check error: ${e}`);
+            }
+        }
+    });
+
+    uninstallBtn.addEventListener('click', async () => {
+        if (confirm("Are you sure you want to uninstall ACC? This will remove all ACC files and configurations.")) {
+            try {
+                const result = await commandExecutor.exec(accPath, ['-U']);
+                if (result.trim() === '✅') {
+                    showError("ACC uninstalled successfully", 'success');
+                } else {
+                    showError("ACC uninstall: " + result.trim(), 'success');
+                }
+                await logManager.info("ACC uninstalled");
+            } catch (e) {
+                showError(`Uninstall failed: ${e}`);
+                await logManager.error(`Uninstall error: ${e}`);
+            }
+        }
+    });
+
+    rollbackBtn.addEventListener('click', async () => {
+        const version = prompt("Enter version to rollback to (leave empty for previous):");
+        try {
+            const args = ['-b'];
+            if (version && version.trim()) {
+                args.push(version.trim());
+            }
+            const result = await commandExecutor.exec(accPath, args);
+            showError("Rollback completed: " + result.trim(), 'success');
+            await logManager.info("Rollback completed");
+        } catch (e) {
+            showError(`Rollback failed: ${e}`);
+            await logManager.error(`Rollback error: ${e}`);
+        }
+    });
+
+    versionBtn.addEventListener('click', async () => {
+        try {
+            // Show loading feedback immediately
+            versionBtn.disabled = true;
+            versionBtn.textContent = 'Checking...';
+
+            const version = await commandExecutor.exec(accPath, ['-v']);
+
+            versionBtn.disabled = false;
+            versionBtn.textContent = 'Show Version';
+
+            showError("ACC Version: " + version.trim(), 'info');
+            await logManager.info("Version checked: " + version.trim());
+        } catch (e) {
+            versionBtn.disabled = false;
+            versionBtn.textContent = 'Show Version';
+            showError(`Version check failed: ${e}`);
+            await logManager.error(`Version check error: ${e}`);
+        }
+    });
+
+    detailedInfoBtn.addEventListener('click', async () => {
+        const panel = document.getElementById('detailed-info-panel');
+        if (panel.style.display === 'none' || !panel.style.display) {
+            try {
+                const info = await commandExecutor.exec(accPath, ['-i']);
+                document.getElementById('detailed-info-content').textContent = info;
+                panel.style.display = 'block';
+                detailedInfoBtn.textContent = 'Hide Detailed Info';
+                await logManager.info("Detailed battery info displayed");
+            } catch (e) {
+                showError(`Failed to get detailed info: ${e}`);
+                await logManager.error(`Detailed info error: ${e}`);
+            }
+        } else {
+            panel.style.display = 'none';
+            detailedInfoBtn.textContent = 'Detailed Battery Info';
+        }
+    });
+
+    readmeBtn.addEventListener('click', async () => {
+        try {
+            const readme = await commandExecutor.exec('cat', ['/data/adb/vr25/acc/README.md']);
+            document.getElementById('readme-content').innerHTML = `<pre style="white-space: pre-wrap; font-family: monospace; font-size: 12px;">${readme.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`;
+            document.getElementById('readme-modal').style.display = 'block';
+            await logManager.info("README displayed");
+        } catch (e) {
+            showError(`Failed to load README: ${e}`);
+            await logManager.error(`README load error: ${e}`);
+        }
+    });
+
+    document.getElementById('close-readme').addEventListener('click', () => {
+        document.getElementById('readme-modal').style.display = 'none';
+    });
+
+    logtailBtn.addEventListener('click', async () => {
+        try {
+            // Show loading feedback immediately
+            logtailBtn.disabled = true;
+            logtailBtn.textContent = 'Loading Logs...';
+
+            // Get recent logs (non-blocking, no -f flag)
+            const logs = await commandExecutor.exec('sh', ['-c', 'tail -n 100 /data/adb/vr25/acc-data/logs/acc-*.log 2>/dev/null || echo "No logs found"']);
+
+            // Display logs in a modal instead of freezing UI
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.style.display = 'block';
+            modal.innerHTML = `
+                <div class="modal-content large-modal">
+                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                    <h2>ACC Log Monitor (Last 100 lines)</h2>
+                    <pre style="max-height: 400px; overflow-y: auto; background: #000; color: #0f0; padding: 12px; white-space: pre-wrap; border-radius: 8px;">${logs || 'No logs available'}</pre>
+                    <div class="button-group" style="margin-top: 16px;">
+                        <button onclick="navigator.clipboard.writeText(\`${logs.replace(/`/g, '\\`')}\`); this.textContent='Copied!';">Copy Logs</button>
+                        <button onclick="this.closest('.modal').remove();">Close</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            // Close modal on outside click
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+
+            logtailBtn.disabled = false;
+            logtailBtn.textContent = 'Log Monitor';
+            await logManager.info("Log monitor opened");
+        } catch (e) {
+            logtailBtn.disabled = false;
+            logtailBtn.textContent = 'Log Monitor';
+            showError(`Failed to load logs: ${e}`);
+            await logManager.error(`Log monitor error: ${e}`);
+        }
+    });
+
     await logManager.ensureLogDirectory();
-    await loadStatus();
-    await loadConfig();
-    await loadLogs();
-    
+
+    // Load data asynchronously without blocking UI initialization
+    // Use Promise.allSettled to load in parallel and continue even if some fail
+    Promise.allSettled([
+        loadStatus(),
+        loadConfig(),
+        loadLogs()
+    ]).then(results => {
+        results.forEach((result, index) => {
+            const names = ['Status', 'Config', 'Logs'];
+            if (result.status === 'rejected') {
+                debugLog(`${names[index]} load failed: ${result.reason}`, 'WARN');
+            }
+        });
+    });
+
+    document.getElementById('run-test-switches').addEventListener('click', async () => {
+        const outputElement = document.getElementById('test-switches-output');
+        const runBtn = document.getElementById('run-test-switches');
+        const stopBtn = document.getElementById('stop-test-switches');
+
+        runBtn.style.display = 'none';
+        stopBtn.style.display = 'inline-block';
+        //todo 这种默认状态需要在停止测试后改回来
+        outputElement.textContent = 'Starting switch test...\n\n⏳ This may take several minutes. Testing charging switches...\n\n';
+
+        let testTerminalId = null;
+        let checkInterval = null;
+
+        ///todo 有些不理解为什么要这么写
+        // try {
+        //     // Start the test command in background
+        //     const callback = `test_callback_${Date.now()}`;
+        //     window[callback] = function (errno, stdout, stderr) {
+        //         delete window[callback];
+        //         if (errno === 0) {
+        //             outputElement.textContent += '\n✅ Test completed!\n\n' + stdout;
+        //         } else {
+        //             outputElement.textContent += '\n❌ Test failed\n\n' + (stderr || stdout || 'Unknown error');
+        //         }
+        //         runBtn.style.display = 'inline-block';
+        //         stopBtn.style.display = 'none';
+        //         if (checkInterval) clearInterval(checkInterval);
+        //     };
+
+        //     // Execute with streaming output simulation
+        //     ksu.exec(`${globalAccPath || accPath} -t 2>&1`, callback);
+
+        //     // Simulate progress updates since we can't get real-time streaming
+        //     let dots = 0;
+        //     const progressMessages = [
+        //         '📋 Analyzing battery interface...',
+        //         '🔌 Testing charging switches...',
+        //         '⚡ Checking switch compatibility...',
+        //         '🔍 Validating results...',
+        //         '📊 Compiling test report...'
+        //     ];
+        //     let msgIndex = 0;
+
+        //     checkInterval = setInterval(() => {
+        //         dots = (dots + 1) % 4;
+        //         const dotString = '.'.repeat(dots);
+        //         const currentMsg = progressMessages[msgIndex % progressMessages.length];
+        //         outputElement.textContent = `Starting switch test...\n\n⏳ This may take several minutes. Testing charging switches${dotString}\n\n${currentMsg}\n\nPlease wait, this process cannot be interrupted safely.`;
+        //         msgIndex++;
+        //     }, 3000);
+
+        //     await logManager.info("Charging switches test started");
+        // } catch (e) {
+        //     outputElement.textContent += `\n❌ Error: ${e}`;
+        //     await logManager.error(`Switch test error: ${e}`);
+        //     runBtn.style.display = 'inline-block';
+        //     stopBtn.style.display = 'none';
+        //     if (checkInterval) clearInterval(checkInterval);
+        // }
+    });
+
+    document.getElementById('stop-test-switches').addEventListener('click', () => {
+        const runBtn = document.getElementById('run-test-switches');
+        const stopBtn = document.getElementById('stop-test-switches');
+        runBtn.style.display = '';
+        stopBtn.style.display = 'none';
+        // document.getElementById('test-switches-modal').style.display = 'none';
+        showError("Test cancelled", 'info');
+    });
+
+    document.getElementById('close-test-switches').addEventListener('click', () => {
+        const runBtn = document.getElementById('run-test-switches');
+        const stopBtn = document.getElementById('stop-test-switches');
+        runBtn.style.display = '';
+        stopBtn.style.display = 'none';
+        document.getElementById('test-switches-modal').style.display = 'none';
+    });
+
+    // Close modals when clicking outside
+    window.addEventListener('click', (event) => {
+        if (event.target.classList.contains('modal')) {
+            event.target.style.display = 'none';
+        }
+    });
+   //todo 和refrsh status按钮做个合并，实现手动和自动刷新保持一致
     setInterval(loadStatus, 10000);
     setInterval(loadLogs, 30000);
+}
+/**
+初始化主导航标签并绑定切换逻辑。
+Initialize main navigation tabs for the WebUI.
+@returns {void}
+ */
+function initializeMainTabs() {
+    const navButtons = document.querySelectorAll('.nav-button');
+
+    navButtons.forEach(button => {
+        button.addEventListener('click', function () {
+            const tabId = this.getAttribute('data-main-tab');
+
+            document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.main-tab-pane').forEach(pane => pane.classList.remove('active'));
+
+            this.classList.add('active');
+            document.getElementById(tabId).classList.add('active');
+
+            debugLog(`Switched to tab: ${tabId}`, 'INFO');
+        });
+    });
+}
+
+async function loadStatus() {
+    await updateStatus();
+}
+
+// Initialize debug mode from localStorage
+function initializeDebugMode() {
+    const debugConsoleCard = document.getElementById('debug-console-card');
+    const debugModeToggle = document.getElementById('debug-mode-toggle');
+
+    // Load saved preference (default: disabled)
+    const debugModeEnabled = localStorage.getItem('debugModeEnabled') === 'true';
+
+    // Set the toggle value
+    debugModeToggle.value = debugModeEnabled ? 'true' : 'false';
+
+    // Apply the setting
+    if (debugModeEnabled) {
+        debugConsoleCard.classList.add('enabled');
+    } else {
+        debugConsoleCard.classList.remove('enabled');
+    }
+
+    // Listen for changes
+    debugModeToggle.addEventListener('change', function () {
+        const isEnabled = this.value === 'true';
+        localStorage.setItem('debugModeEnabled', isEnabled);
+
+        if (isEnabled) {
+            debugConsoleCard.classList.add('enabled');
+            showError('Debug console enabled - visible on all pages', 'info');
+        } else {
+            debugConsoleCard.classList.remove('enabled');
+            showError('Debug console disabled', 'info');
+        }
+
+        debugLog(`Debug mode ${isEnabled ? 'enabled' : 'disabled'}`, 'INFO');
+    });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        await logManager.ensureLogDirectory();
-        await logManager.info("WebView starting");
+        initializeMainTabs();
+
+        if (typeof ksu === 'undefined' || !ksu.exec) {
+            console.error("KernelSU API not available");
+            showError("KernelSU API not available. This webui requires KernelSU to function properly.");
+            return;
+        }
+
+        console.log("KernelSU API available, initializing...");
+
+        try {
+            await logManager.ensureLogDirectory();
+            await logManager.info("WebView starting");
+        } catch (logError) {
+            console.warn("Logging initialization failed:", logError);
+        }
+
         await verifySystem();
+
+        // Initialize debug mode toggle
+        initializeDebugMode();
     } catch (e) {
         console.error("Initialization failed:", e);
         showError("Initialization failed. Check console for details.");
