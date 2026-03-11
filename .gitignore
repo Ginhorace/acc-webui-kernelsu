@@ -2,3 +2,5 @@ _builds
 _misc
 .directory
 *.kate-swp
+/install/webroot-src/node_modules
+/install/webroot-src/.vscode

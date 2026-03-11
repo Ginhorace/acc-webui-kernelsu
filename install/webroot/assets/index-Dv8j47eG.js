@@ -192,6 +192,10 @@ const logFile = "/data/adb/vr25/acc-data/logs/webview-acc.log";
 const defaultProfilePath = execDir + "/default-config.txt";
 const startupProfilePath = dataDir + "/config.txt";
 const forceChargingPath = tmpDir + "/.acc-f-config";
+const localStorageKey = {
+  debugModeToggle: "debugModeEnabled",
+  localAccPath: "accPath"
+};
 var LogLevel = /* @__PURE__ */ ((LogLevel2) => {
   LogLevel2["DEBUG"] = "DEBUG";
   LogLevel2["INFO"] = "INFO";
@@ -319,6 +323,10 @@ const ACC_PATHS = [
   `${binDir}/acc`
 ];
 async function initAccPath() {
+  const localAccPath = localStorage.getItem(localStorageKey.localAccPath);
+  if (typeof localAccPath !== "undefined" && localAccPath) {
+    ACC_PATHS.unshift(localAccPath);
+  }
   if (typeof window.ACC !== "undefined" && window.ACC && window.ACC.accPath) {
     ACC_PATHS.unshift(window.ACC.accPath);
   }
@@ -327,6 +335,7 @@ async function initAccPath() {
     if (result.errno === 0) {
       printToConsole(`ACC found at ${path}, version: ${result.stdout}`);
       setAccPath(path);
+      localStorage.setItem(localStorageKey.localAccPath, path);
       setAccVersion(result.stdout.trim());
       return true;
     }
@@ -2523,7 +2532,7 @@ setConsoleListener((message, level) => {
 function initializeDebugMode() {
   const debugConsoleCard = $$1("debug-console-card");
   const debugModeToggle = $$1("debug-mode-toggle");
-  const debugModeEnabled = localStorage.getItem("debugModeEnabled") === "true";
+  const debugModeEnabled = localStorage.getItem(localStorageKey.debugModeToggle) === "true";
   if (debugModeToggle) debugModeToggle.value = debugModeEnabled ? "true" : "false";
   if (debugConsoleCard) {
     if (debugModeEnabled) {
@@ -2540,7 +2549,7 @@ function initializeDebugMode() {
 }
 function handleDebugModeChange(select, debugConsoleCard) {
   const isEnabled = select.value === "true";
-  localStorage.setItem("debugModeEnabled", String(isEnabled));
+  localStorage.setItem(localStorageKey.debugModeToggle, String(isEnabled));
   if (debugConsoleCard) {
     if (isEnabled) {
       debugConsoleCard.classList.add("enabled");
@@ -3067,7 +3076,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       printToNotify(`Logging initialization failed`, LogLevel.ERROR);
       return;
     }
-    if (!initAccPath()) {
+    if (!await initAccPath()) {
       printToNotify("ACC binary not found", LogLevel.ERROR);
       return;
     }

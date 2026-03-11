@@ -203,7 +203,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             logger.printToNotify(`Logging initialization failed`, LogLevel.ERROR);
             return;
         }
-        if (!acc.initAccPath()) {
+        if (!await acc.initAccPath()) {
             logger.printToNotify('ACC binary not found', LogLevel.ERROR);
             return;
         }

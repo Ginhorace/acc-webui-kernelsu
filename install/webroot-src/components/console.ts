@@ -2,6 +2,7 @@
 import * as logger from '@/env/logger';
 import { LogLevel } from '@/data/state';
 import { $ } from '@/components/base';
+import { localStorageKey } from '@/config/setting';
 
 logger.setConsoleListener((message, level) => {
     switch (level) {
@@ -28,7 +29,7 @@ function initializeDebugMode(): void {
     const debugConsoleCard = $('debug-console-card');
     const debugModeToggle = $('debug-mode-toggle') as HTMLSelectElement | null;
 
-    const debugModeEnabled = localStorage.getItem('debugModeEnabled') === 'true';
+    const debugModeEnabled = localStorage.getItem(localStorageKey.debugModeToggle) === 'true';
 
     if (debugModeToggle) debugModeToggle.value = debugModeEnabled ? 'true' : 'false';
 
@@ -54,7 +55,7 @@ function initializeDebugMode(): void {
  */
 function handleDebugModeChange(select: HTMLSelectElement, debugConsoleCard: HTMLElement | null): void {
     const isEnabled = select.value === 'true';
-    localStorage.setItem('debugModeEnabled', String(isEnabled));
+    localStorage.setItem(localStorageKey.debugModeToggle, String(isEnabled));
 
     if (debugConsoleCard) {
         if (isEnabled) {

@@ -1,7 +1,7 @@
 import { ExecResults } from '@/env/ksu';
 import * as logger from '@/env/logger';
 import { getAccPath, getAccVersion, setAccPath, setAccVersion } from '@/data/state';
-import { binDir, execDir } from '@/config/setting';
+import { binDir, execDir, localStorageKey } from '@/config/setting';
 
 const ACC_PATHS: string[] = [
     'acc',
@@ -16,6 +16,10 @@ const ACC_PATHS: string[] = [
  * @returns 成功返回true，找不到返回false
  */
 async function initAccPath(): Promise<boolean> {
+    const localAccPath = localStorage.getItem(localStorageKey.localAccPath);
+    if (typeof localAccPath !== 'undefined' && localAccPath) {
+        ACC_PATHS.unshift(localAccPath);
+    }
     if (typeof window.ACC !== 'undefined' && window.ACC && window.ACC.accPath) {
         ACC_PATHS.unshift(window.ACC.accPath);
     }
@@ -24,6 +28,8 @@ async function initAccPath(): Promise<boolean> {
         if (result.errno === 0) {
             logger.printToConsole(`ACC found at ${path}, version: ${result.stdout}`);
             setAccPath(path);
+            localStorage.setItem(localStorageKey.localAccPath, path);
+            //todo 使用localstorage
             setAccVersion(result.stdout.trim());
             return true;
         }
