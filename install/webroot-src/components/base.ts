@@ -107,14 +107,16 @@ function parseConfig(config: string): Record<string, string> {
 }
 
 /**
- * 检查配置文件路径并更新panel
+ * 检查配置文件路径并更新panel，未运行设置path为''，默认运行设置startupProfilePath，其他正常使用路径
  * @param profilePanel 
  */
 async function checkAccdProfile(profilePanel: string) {
-    const configResult = await command.checkAccdProfile();
-    if (configResult.errno === 0) {
-        printToConsole(configResult.stdout, LogLevel.DEBUG);
-        const currentProfile = configResult.stdout?.trim() || startupProfilePath;
+    const allProfile = await command.checkAccdResult();
+    printToConsole(`errno:${allProfile.errno}\n\nstdout:${allProfile.stdout}\n\nstderr:${allProfile.stderr}`, LogLevel.DEBUG);
+    const profile = await command.checkAccdProfile();
+    if (profile.errno === 0) {
+        printToConsole(profile.stdout, LogLevel.DEBUG);
+        const currentProfile = profile.stdout?.trim() || startupProfilePath;
         setProfilePanel(profilePanel, currentProfile);
         setAccProfilePath(currentProfile);
     }

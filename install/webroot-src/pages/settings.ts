@@ -85,7 +85,7 @@ async function refreshSettings(): Promise<void> {
             }
             await loadCurrentConfig(currentProfile);
             base.setButtonLoading(base.$('settings-panel') as HTMLDivElement, false);
-            logger.printToNotify(`${currentProfile.includes(startupProfilePath)?'Startup Profile':currentProfile.split('/').pop()} is being edited`)
+            logger.printToNotify(`${(!currentProfile||currentProfile.includes(startupProfilePath))?'Startup Profile':currentProfile.split('/').pop()} is being edited`)
         }
         catch (e) {
             logger.printToNotify(`refresh failed:${e}`, LogLevel.ERROR);

@@ -300,6 +300,9 @@ async function createProfileDir() {
 async function checkAccdProfile$1() {
   return exec(`ps -ef | awk '/[a]ccd\\.sh/{sub(/.*accd\\.sh[ \\t]*/,"");if($0)print;f=1} END{exit!f}'`);
 }
+async function checkAccdResult() {
+  return exec(`ps -ef | grep [a]ccd.sh`);
+}
 async function checkBatteryCapacity() {
   return exec(`cat /sys/class/power_supply/*/charge_full_design`);
 }
@@ -443,10 +446,16 @@ function parseConfig(config) {
 }
 async function checkAccdProfile(profilePanel) {
   var _a2;
-  const configResult = await checkAccdProfile$1();
-  if (configResult.errno === 0) {
-    printToConsole(configResult.stdout, LogLevel.DEBUG);
-    const currentProfile = ((_a2 = configResult.stdout) == null ? void 0 : _a2.trim()) || startupProfilePath;
+  const allProfile = await checkAccdResult();
+  printToConsole(`errno:${allProfile.errno}
+
+stdout:${allProfile.stdout}
+
+stderr:${allProfile.stderr}`, LogLevel.DEBUG);
+  const profile = await checkAccdProfile$1();
+  if (profile.errno === 0) {
+    printToConsole(profile.stdout, LogLevel.DEBUG);
+    const currentProfile = ((_a2 = profile.stdout) == null ? void 0 : _a2.trim()) || startupProfilePath;
     setProfilePanel(profilePanel, currentProfile);
     setAccProfilePath(currentProfile);
   } else {
@@ -879,6 +888,10 @@ async function handleDisableCharging(button) {
           if (enableCharging) enableCharging.style.visibility = "visible";
           if (forceCharging) forceCharging.style.visibility = "visible";
           printToNotify("Disable charging stopped");
+          setAccProfilePath("");
+          restartAccdSpawn({
+            onExit: () => checkAccdProfile(ProfilePanelName$2)
+          });
         }
       });
       return abortController;
@@ -915,6 +928,10 @@ async function handleEnableCharging(button) {
           if (disableCharging) disableCharging.style.visibility = "visible";
           if (forceCharging) forceCharging.style.visibility = "visible";
           printToNotify("Enable charging stopped");
+          setAccProfilePath("");
+          restartAccdSpawn({
+            onExit: () => checkAccdProfile(ProfilePanelName$2)
+          });
         }
       });
       return abortController;
@@ -2398,7 +2415,7 @@ async function refreshSettings() {
       }
       await loadCurrentConfig(currentProfile);
       setButtonLoading($$1("settings-panel"), false);
-      printToNotify(`${currentProfile.includes(startupProfilePath) ? "Startup Profile" : currentProfile.split("/").pop()} is being edited`);
+      printToNotify(`${!currentProfile || currentProfile.includes(startupProfilePath) ? "Startup Profile" : currentProfile.split("/").pop()} is being edited`);
     } catch (e) {
       printToNotify(`refresh failed:${e}`, LogLevel.ERROR);
     }

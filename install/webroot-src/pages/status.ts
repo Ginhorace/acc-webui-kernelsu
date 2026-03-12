@@ -149,12 +149,12 @@ function handleRefresh(button: base.ButtonWithAbort): void {
  * Handle battery health check
  */
 async function handleBatteryHealth(button: HTMLButtonElement): Promise<void> {
-    let resutlt=await checkBatteryCapacity();
-    let capacity='';
-    if(resutlt.errno===0&&resutlt.stdout){
-        capacity=(Number(resutlt.stdout) / 1000).toString();
+    let resutlt = await checkBatteryCapacity();
+    let capacity = '';
+    if (resutlt.errno === 0 && resutlt.stdout) {
+        capacity = (Number(resutlt.stdout) / 1000).toString();
     }
-    const mAh = await customPrompt('Enter battery capacity in mAh (leave empty to auto-detect):',capacity);
+    const mAh = await customPrompt('Enter battery capacity in mAh (leave empty to auto-detect):', capacity);
     if (mAh !== null) {
         base.setButtonLoading(button, true);
         acc.printHealth(mAh).then((result => {
@@ -211,6 +211,10 @@ async function handleDisableCharging(button: base.ButtonWithAbort): Promise<void
                     if (enableCharging) enableCharging.style.visibility = 'visible';
                     if (forceCharging) forceCharging.style.visibility = 'visible';
                     logger.printToNotify('Disable charging stopped');
+                    setAccProfilePath('');
+                    acca.restartAccdSpawn({
+                        onExit: () => base.checkAccdProfile(ProfilePanelName)
+                    });
                 }
             });
             return abortController;
@@ -252,6 +256,10 @@ async function handleEnableCharging(button: base.ButtonWithAbort): Promise<void>
                     if (disableCharging) disableCharging.style.visibility = 'visible';
                     if (forceCharging) forceCharging.style.visibility = 'visible';
                     logger.printToNotify('Enable charging stopped');
+                    setAccProfilePath('');
+                    acca.restartAccdSpawn({
+                        onExit: () => base.checkAccdProfile(ProfilePanelName)
+                    });
                 }
             });
             return abortController;

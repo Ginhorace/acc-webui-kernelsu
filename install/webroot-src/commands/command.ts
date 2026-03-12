@@ -35,11 +35,19 @@ async function createProfileDir(): Promise<ExecResults> {
 }
 
 /**
- * 检查accd.sh执行使用的配置文件
+ * 检查accd.sh执行使用的配置文件 //todo 返回值还是有点bug
  * @returns 未运行返回errno 1，使用startup配置返回''，使用配置时返回具体配置路径
  */
 async function checkAccdProfile() {
     return logger.exec(`ps -ef | awk '/[a]ccd\\.sh/{sub(/.*accd\\.sh[ \\t]*/,"");if($0)print;f=1} END{exit!f}'`);
+
+}
+/**
+ * 检查accd.sh执行使用的配置文件 //todo 返回值还是有点bug
+ * @returns 未运行返回errno 1，使用startup配置返回''，使用配置时返回具体配置路径
+ */
+async function checkAccdResult() {
+    return logger.exec(`ps -ef | grep [a]ccd.sh`);
 
 }
 /**
@@ -82,4 +90,4 @@ async function clearLogs(): Promise<ExecResults> {
     return ksuExec(`: > "${logFile}"`);
 }
 
-export { initLogDirectory, checkId, showReadme, createProfileDir, loadProfilesPath, checkAccdProfile, deleteProfile, copyProfile, clearLogs,checkBatteryCapacity };
+export { initLogDirectory, checkId, showReadme, createProfileDir, loadProfilesPath, checkAccdProfile, deleteProfile, copyProfile, clearLogs,checkBatteryCapacity ,checkAccdResult};
