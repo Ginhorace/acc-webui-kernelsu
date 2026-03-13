@@ -107,6 +107,10 @@ function setActiveCard(path: string): void {
         card.setActive(cardPath === path);
     });
 }
+
+function getAccProfileName(profile: string) {
+    return profile.includes(startupProfilePath) ? 'Startup Profile' : profile.split('/').pop();
+}
 /**
  * Handle apply profile
  */
@@ -119,7 +123,7 @@ async function handleApply(card: ProfileCard): Promise<void> {
                 if (code === 0) {
                     setProfilePanel(ProfilePanelName, path);
                     setActiveCard(path);
-                    logger.printToNotify(`Profile applied : ${path}`);
+                    logger.printToNotify(`Profile applied : ${getAccProfileName(path)}`);
                 } else {
                     logger.printToConsole(`Failed to apply profile (exit code: ${code})`, LogLevel.ERROR);
                 }

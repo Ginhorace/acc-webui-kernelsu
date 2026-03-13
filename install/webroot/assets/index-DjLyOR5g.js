@@ -298,7 +298,7 @@ async function createProfileDir() {
   return exec("mkdir", ["-p", `${dataDir}/profiles`]);
 }
 async function checkAccdProfile$1() {
-  return exec(`ps -ef | awk '/[a]ccd\\.sh/{sub(/.*accd\\.sh[ \\t]*/,"");if($0)print;f=1} END{exit!f}'`);
+  return exec(`ps -ef | awk '$3 == 1 && /[a]ccd\\.sh/{sub(/.*accd\\.sh[ \\t]*/,"");if($0)print;f=1} END{exit!f}'`);
 }
 async function checkAccdResult() {
   return exec(`ps -ef | grep [a]ccd.sh`);
@@ -501,7 +501,7 @@ async function showInfo() {
   return execAcca([getAccProfilePath(), "-i"]);
 }
 function restartAccdSpawn(options = {}) {
-  return spawn(getAccaPAth(), [getAccProfilePath(), "-D", "restart"], options);
+  return spawn(`su -c "sh -c 'nohup setsid ${getAccPath()} ${getAccProfilePath()} -D restart >/dev/null 2>&1 &' &"`, [], options);
 }
 function stopAccdSpawn(options = {}) {
   return spawn(getAccaPAth(), ["-D", "stop"], options);
@@ -2403,6 +2403,9 @@ function initializeSettingsTab() {
     button.addEventListener("click", handleTabButtonClick);
   });
 }
+function getAccProfileName$1(profile) {
+  return !profile || profile.includes(startupProfilePath) ? "Startup Profile" : profile.split("/").pop();
+}
 async function refreshSettings() {
   setButtonLoading($$1("settings-panel"), true);
   setTimeout(async () => {
@@ -2415,7 +2418,7 @@ async function refreshSettings() {
       }
       await loadCurrentConfig(currentProfile);
       setButtonLoading($$1("settings-panel"), false);
-      printToNotify(`${!currentProfile || currentProfile.includes(startupProfilePath) ? "Startup Profile" : currentProfile.split("/").pop()} is being edited`);
+      printToNotify(`${getAccProfileName$1(currentProfile)} is being edited`);
     } catch (e) {
       printToNotify(`refresh failed:${e}`, LogLevel.ERROR);
     }
@@ -2886,6 +2889,9 @@ function setActiveCard(path) {
     card.setActive(cardPath === path);
   });
 }
+function getAccProfileName(profile) {
+  return profile.includes(startupProfilePath) ? "Startup Profile" : profile.split("/").pop();
+}
 async function handleApply(card) {
   const path = card.getConfigPath();
   await setAccProfilePath(path);
@@ -2895,7 +2901,7 @@ async function handleApply(card) {
         if (code === 0) {
           setProfilePanel(ProfilePanelName, path);
           setActiveCard(path);
-          printToNotify(`Profile applied : ${path}`);
+          printToNotify(`Profile applied : ${getAccProfileName(path)}`);
         } else {
           printToConsole(`Failed to apply profile (exit code: ${code})`, LogLevel.ERROR);
         }

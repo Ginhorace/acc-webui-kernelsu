@@ -178,9 +178,8 @@ config_=$config
 [config]路径不能使用括号，否则会被当做变量拆开
 acc 也支持  acc [config] [option] 写法。
 
+## acc初始化
+service.sh作为[启动脚本](https://jesse205.github.io/MagiskChineseDocument/guides.html#%E5%90%AF%E5%8A%A8%E8%84%9A%E6%9C%AC)是会被root管理器开机启动的，在第一次启动执行初始化时耗时较长，但是初始化完成后就会执行accd.sh，并且不带配置路径，所以读取accd指令获取配置路径时，如果为空就是指startup路径。
+
 todo 另外，使用Enable charging或Disable charging的时候，acc会关闭accd的执行，并且acc使用了while控制，所以一直会有一个acc -d/e 1h的进程，所以之后可能需要添加对其的监控来修改status按钮逻辑。
 
-## acc初始化
-service.sh作为[启动脚本](https://jesse205.github.io/MagiskChineseDocument/guides.html#%E5%90%AF%E5%8A%A8%E8%84%9A%E6%9C%AC)是会被root管理器开机启动的，在第一次启动执行初始化时耗时较长，但是初始化完成后就会执行accd.sh，并且不带配置路径，所以读取accd指令获取配置路径时，如果为空就是指默认路径。
-
-todo 刚重启时读取config路径后面会跟着]也就是config.txt]，或者是很多行config结果

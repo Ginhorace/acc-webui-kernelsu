@@ -35,15 +35,15 @@ async function createProfileDir(): Promise<ExecResults> {
 }
 
 /**
- * 检查accd.sh执行使用的配置文件 //todo 返回值还是有点bug
+ * 检查accd.sh执行使用的配置文件 ,使用$3 == 1 过滤产生的子进程
  * @returns 未运行返回errno 1，使用startup配置返回''，使用配置时返回具体配置路径
  */
 async function checkAccdProfile() {
-    return logger.exec(`ps -ef | awk '/[a]ccd\\.sh/{sub(/.*accd\\.sh[ \\t]*/,"");if($0)print;f=1} END{exit!f}'`);
+    return logger.exec(`ps -ef | awk '$3 == 1 && /[a]ccd\\.sh/{sub(/.*accd\\.sh[ \\t]*/,"");if($0)print;f=1} END{exit!f}'`);
 
 }
 /**
- * 检查accd.sh执行使用的配置文件 //todo 返回值还是有点bug
+ * 检查accd.sh执行使用的配置文件 
  * @returns 未运行返回errno 1，使用startup配置返回''，使用配置时返回具体配置路径
  */
 async function checkAccdResult() {

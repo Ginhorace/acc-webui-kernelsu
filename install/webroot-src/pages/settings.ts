@@ -71,6 +71,9 @@ function initializeSettingsTab(): void {
     });
 }
 
+function getAccProfileName(profile: string) {
+    return (!profile || profile.includes(startupProfilePath)) ? 'Startup Profile' : profile.split('/').pop();
+}
 
 async function refreshSettings(): Promise<void> {
     base.setButtonLoading(base.$('settings-panel') as HTMLDivElement, true);
@@ -80,12 +83,12 @@ async function refreshSettings(): Promise<void> {
             await base.checkAccdProfile(ProfilePanelName);
             let currentProfile = getAccProfilePath();
             if (base.isForceCharging(currentProfile)) {
-                logger.printToNotify('ForceCharging configuration should not be modified.',LogLevel.ERROR)
+                logger.printToNotify('ForceCharging configuration should not be modified.', LogLevel.ERROR)
                 return;
             }
             await loadCurrentConfig(currentProfile);
             base.setButtonLoading(base.$('settings-panel') as HTMLDivElement, false);
-            logger.printToNotify(`${(!currentProfile||currentProfile.includes(startupProfilePath))?'Startup Profile':currentProfile.split('/').pop()} is being edited`)
+            logger.printToNotify(`${getAccProfileName(currentProfile)} is being edited`)
         }
         catch (e) {
             logger.printToNotify(`refresh failed:${e}`, LogLevel.ERROR);
@@ -217,7 +220,7 @@ async function handleSaveConfig(): Promise<void> {
                 acca.restartAccdSpawn({});
             }
             catch (e) {
-                logger.printToConsole(`${e}`,LogLevel.ERROR);
+                logger.printToConsole(`${e}`, LogLevel.ERROR);
             }
             finally {
                 base.setButtonLoading(panel, false);

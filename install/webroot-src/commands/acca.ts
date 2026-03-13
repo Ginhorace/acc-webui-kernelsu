@@ -71,7 +71,9 @@ function restartAccdSpawn(
         onError?: (err: any) => void;
     } = {}
 ): AbortController {
-    return logger.spawn(getAccaPAth(), [getAccProfilePath(),'-D', 'restart'], options);
+    ///从apatch启动accd会出现当apatch关闭时，accd也会被关闭的问题，所以使用了“双重脱离”脚本
+        // return logger.spawn(getAccaPAth(), [getAccProfilePath(),'-D', 'restart'], options);
+    return logger.spawn(`su -c "sh -c 'nohup setsid ${getAccPath()} ${getAccProfilePath()} -D restart >/dev/null 2>&1 &' &"`,[], options);
 }
 /**
  *    -D|--daemon [start|stop|restart]   Manage daemon
