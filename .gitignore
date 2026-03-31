@@ -4,3 +4,4 @@ _misc
 *.kate-swp
 /install/webroot-src/node_modules
 /install/webroot-src/.vscode
+/.vscode

@@ -873,6 +873,24 @@ button.activate:hover {
     max-width: 140px;
 }
 
+.config-item input[type="checkbox"] {
+    width: auto;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+}
+
+/* Checkbox items always display inline */
+.config-item:has(input[type="checkbox"]) {
+    flex-direction: row;
+    align-items: center;
+}
+
+.config-item:has(input[type="checkbox"]) label {
+    margin-bottom: 0;
+    cursor: pointer;
+}
+
 .config-item textarea {
     resize: vertical;
     min-height: 90px;

@@ -48,6 +48,7 @@ const CONFIG_MAPPINGS: ConfigMapping[] = [
 
     // Other settings
     { elementName: 'charging-switch', configName: 'charging_switch' },
+    { elementName: 'charging-switch-lock', configName: 'charging_switch_lock', required: true },
     { elementName: 'batt-status-override', configName: 'batt_status_override' },
     { elementName: 'idle-apps', configName: 'idle_apps' },
     { elementName: 'run-cmd-on-pause', configName: 'run_cmd_on_pause' },
@@ -69,6 +70,24 @@ function initializeSettingsTab(): void {
     document.querySelectorAll('.tab-button').forEach((button: Element) => {
         button.addEventListener('click', handleTabButtonClick);
     });
+    // Charging switch lock toggle
+    const lockCheckbox = base.$('charging-switch-lock') as HTMLInputElement;
+    if (lockCheckbox) {
+        lockCheckbox.addEventListener('change', handleChargingSwitchLockChange);
+    }
+}
+
+/**
+ * Handle charging switch lock checkbox change
+ */
+function handleChargingSwitchLockChange(): void {
+    const lockCheckbox = base.$('charging-switch-lock') as HTMLInputElement;
+    const label = base.$('charging-switch-lock-label');
+    if (lockCheckbox && label) {
+        label.textContent = lockCheckbox.checked 
+            ? 'Charging Switch: (lock)' 
+            : 'Charging Switch: (automatic cycles)';
+    }
 }
 
 function getAccProfileName(profile: string) {
@@ -106,6 +125,39 @@ function getVal(id: string): string {
     return el ? (el as HTMLInputElement | HTMLSelectElement).value : '';
 }
 
+/**
+ * Handle charging-switch value and lock checkbox
+ * @param elementName - The element name
+ * @param value - The config value
+ * @returns Processed value without ' --' suffix
+ */
+function handleChargingSwitchLock(elementName: string, value: string): string {
+    if (elementName !== 'charging-switch' || !value) {
+        return value;
+    }
+    
+    const lockEl = base.$('charging-switch-lock') as HTMLInputElement;
+    const label = base.$('charging-switch-lock-label');
+    
+    if (value.endsWith(' --')) {
+        if (lockEl) {
+            lockEl.checked = true;
+        }
+        if (label) {
+            label.textContent = 'Charging Switch: (lock)';
+        }
+        return value.slice(0, -3);
+    } else {
+        if (lockEl) {
+            lockEl.checked = false;
+        }
+        if (label) {
+            label.textContent = 'Charging Switch: (automatic cycles)';
+        }
+        return value;
+    }
+}
+
 
 
 /**
@@ -117,14 +169,27 @@ function buildConfigCommands(): string[] {
     const cooldownChargeVal = getVal('cooldown-charge');
     const cooldownPauseVal = getVal('cooldown-pause');
     const hasCooldownPair = cooldownChargeVal && cooldownPauseVal;
+    const lockEl = base.$('charging-switch-lock') as HTMLInputElement;
+    const chargingSwitchLock = lockEl ? lockEl.checked : false;
 
     for (const mapping of CONFIG_MAPPINGS) {
+        // Skip charging-switch-lock as it's handled separately
+        if (mapping.elementName === 'charging-switch-lock') {
+            continue;
+        }
+
         // Special handling for cooldown pair
         if ((mapping.elementName === 'cooldown-charge' || mapping.elementName === 'cooldown-pause') && !hasCooldownPair) {
             continue;
         }
 
-        const value = getVal(mapping.elementName);
+        let value = getVal(mapping.elementName);
+        
+        // Add ' --' suffix to charging-switch if lock is enabled
+        if (mapping.elementName === 'charging-switch' && value && chargingSwitchLock) {
+            value = value + ' --';
+        }
+
         if (mapping.required || value) {
             commands.push(`${mapping.configName}=${value}`);
         }
@@ -160,11 +225,14 @@ async function loadCurrentConfig(currentProfile: string): Promise<void> {
         const configResult = await acca.printConfig(currentProfile);
         if (configResult.errno === 0 && configResult.stdout) {
             const configMap = base.parseConfig(configResult.stdout?.trim());
+            
             // Apply config values to UI elements
             for (const mapping of CONFIG_MAPPINGS) {
                 const el = base.$(mapping.elementName);
                 if (el) {
-                    (el as HTMLInputElement | HTMLSelectElement).value = configMap[mapping.configName] || '';
+                    let value = configMap[mapping.configName] || '';
+                    value = handleChargingSwitchLock(mapping.elementName, value);
+                    (el as HTMLInputElement | HTMLSelectElement).value = value;
                 }
             }
         }

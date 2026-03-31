@@ -2388,6 +2388,7 @@ const CONFIG_MAPPINGS = [
   { elementName: "cooldown-pause", configName: "cooldown_pause" },
   // Other settings
   { elementName: "charging-switch", configName: "charging_switch" },
+  { elementName: "charging-switch-lock", configName: "charging_switch_lock", required: true },
   { elementName: "batt-status-override", configName: "batt_status_override" },
   { elementName: "idle-apps", configName: "idle_apps" },
   { elementName: "run-cmd-on-pause", configName: "run_cmd_on_pause" },
@@ -2402,6 +2403,17 @@ function initializeSettingsTab() {
   document.querySelectorAll(".tab-button").forEach((button) => {
     button.addEventListener("click", handleTabButtonClick);
   });
+  const lockCheckbox = $$1("charging-switch-lock");
+  if (lockCheckbox) {
+    lockCheckbox.addEventListener("change", handleChargingSwitchLockChange);
+  }
+}
+function handleChargingSwitchLockChange() {
+  const lockCheckbox = $$1("charging-switch-lock");
+  const label = $$1("charging-switch-lock-label");
+  if (lockCheckbox && label) {
+    label.textContent = lockCheckbox.checked ? "Charging Switch: (lock)" : "Charging Switch: (automatic cycles)";
+  }
 }
 function getAccProfileName$1(profile) {
   return !profile || profile.includes(startupProfilePath) ? "Startup Profile" : profile.split("/").pop();
@@ -2428,16 +2440,48 @@ function getVal(id) {
   const el = $$1(id);
   return el ? el.value : "";
 }
+function handleChargingSwitchLock(elementName, value) {
+  if (elementName !== "charging-switch" || !value) {
+    return value;
+  }
+  const lockEl = $$1("charging-switch-lock");
+  const label = $$1("charging-switch-lock-label");
+  if (value.endsWith(" --")) {
+    if (lockEl) {
+      lockEl.checked = true;
+    }
+    if (label) {
+      label.textContent = "Charging Switch: (lock)";
+    }
+    return value.slice(0, -3);
+  } else {
+    if (lockEl) {
+      lockEl.checked = false;
+    }
+    if (label) {
+      label.textContent = "Charging Switch: (automatic cycles)";
+    }
+    return value;
+  }
+}
 function buildConfigCommands() {
   const commands = [];
   const cooldownChargeVal = getVal("cooldown-charge");
   const cooldownPauseVal = getVal("cooldown-pause");
   const hasCooldownPair = cooldownChargeVal && cooldownPauseVal;
+  const lockEl = $$1("charging-switch-lock");
+  const chargingSwitchLock = lockEl ? lockEl.checked : false;
   for (const mapping of CONFIG_MAPPINGS) {
+    if (mapping.elementName === "charging-switch-lock") {
+      continue;
+    }
     if ((mapping.elementName === "cooldown-charge" || mapping.elementName === "cooldown-pause") && !hasCooldownPair) {
       continue;
     }
-    const value = getVal(mapping.elementName);
+    let value = getVal(mapping.elementName);
+    if (mapping.elementName === "charging-switch" && value && chargingSwitchLock) {
+      value = value + " --";
+    }
     if (mapping.required || value) {
       commands.push(`${mapping.configName}=${value}`);
     }
@@ -2464,7 +2508,9 @@ async function loadCurrentConfig(currentProfile) {
       for (const mapping of CONFIG_MAPPINGS) {
         const el = $$1(mapping.elementName);
         if (el) {
-          el.value = configMap[mapping.configName] || "";
+          let value = configMap[mapping.configName] || "";
+          value = handleChargingSwitchLock(mapping.elementName, value);
+          el.value = value;
         }
       }
     }
